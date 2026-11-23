@@ -1,0 +1,170 @@
+{
+  "_note": "SIMULATOR seed. All people, numbers and PANs are fictional. Matches the seeds of both demo websites.",
+  "advisors": [
+    {
+      "mhfId": "MHF500001",
+      "name": "James Wilson"
+    },
+    {
+      "mhfId": "MHF500002",
+      "name": "Robert Brown"
+    },
+    {
+      "mhfId": "MHF500003",
+      "name": "Emma Clark"
+    },
+    {
+      "mhfId": "MHF500004",
+      "name": "David Miller"
+    },
+    {
+      "mhfId": "MHF500005",
+      "name": "Sarah Lee"
+    },
+    {
+      "mhfId": "MHF500007",
+      "name": "John Smith"
+    },
+    {
+      "mhfId": "MHF500011",
+      "name": "Emily Davis"
+    },
+    {
+      "mhfId": "MHF500077",
+      "name": "Mark Taylor"
+    },
+    {
+      "mhfId": "MHF500031",
+      "name": "Tom Harris"
+    },
+    {
+      "mhfId": "MHF500051",
+      "name": "Anna White"
+    }
+  ],
+  "clients": [
+    {
+      "cid": "CID60001",
+      "pan": "ABCDE1234F",
+      "name": "Ramesh Kumar",
+      "mobiles": [
+        "9876501001"
+      ],
+      "platformFamilyId": "PF-30001",
+      "advisorMhfId": "MHF500007",
+      "registeredDaysAgo": 3,
+      "selfRegistered": false,
+      "investments": []
+    },
+    {
+      "cid": "CID60002",
+      "pan": "PQRST9876V",
+      "name": "Sunita Kumar",
+      "mobiles": [
+        "9876501002"
+      ],
+      "platformFamilyId": "PF-30001",
+      "advisorMhfId": "MHF500007",
+      "registeredDaysAgo": 3,
+      "selfRegistered": false,
+      "investments": []
+    },
+    {
+      "cid": "CID60010",
+      "pan": "AMPPP1111M",
+      "name": "Mahesh Patil",
+      "mobiles": [
+        "9876502001"
+      ],
+      "platformFamilyId": "PF-30010",
+      "advisorMhfId": "MHF500007",
+      "registeredDaysAgo": 6,
+      "selfRegistered": false,
+      "investments": []
+    },
+    {
+      "cid": "CID60011",
+      "pan": "KVPPP2222K",
+      "name": "Kavita Patil",
+      "mobiles": [
+        "9876502002"
+      ],
+      "platformFamilyId": "PF-30099",
+      "advisorMhfId": null,
+      "registeredDaysAgo": 40,
+      "selfRegistered": true,
+      "investments": []
+    },
+    {
+      "cid": "CID60020",
+      "pan": "SRMPM3333S",
+      "name": "Suresh Menon",
+      "mobiles": [
+        "9876503001"
+      ],
+      "platformFamilyId": "PF-30020",
+      "advisorMhfId": "MHF500011",
+      "registeredDaysAgo": 90,
+      "selfRegistered": false,
+      "investments": [
+        {
+          "daysAgo": 60,
+          "product": "MF Equity",
+          "amount": 150000
+        }
+      ]
+    },
+    {
+      "cid": "CID60050",
+      "pan": "KRDPD4444D",
+      "name": "Kiran Desai",
+      "mobiles": [
+        "9811122233"
+      ],
+      "platformFamilyId": "PF-30050",
+      "advisorMhfId": null,
+      "registeredDaysAgo": 20,
+      "selfRegistered": true,
+      "investments": []
+    },
+    {
+      "cid": "CID60070",
+      "pan": "VJYPR7777V",
+      "name": "Vijay Rao",
+      "mobiles": [
+        "9876508001"
+      ],
+      "platformFamilyId": "PF-30070",
+      "advisorMhfId": "MHF500007",
+      "registeredDaysAgo": 400,
+      "selfRegistered": false,
+      "investments": [
+        {
+          "daysAgo": 30,
+          "product": "MF Debt",
+          "amount": 75000
+        }
+      ]
+    }
+  ],
+  "examples": [
+    {
+      "label": "Priya Kumar (Ramesh Kumar's daughter) registers later",
+      "name": "Priya Kumar",
+      "pan": "LMNOP4567Q",
+      "mobile": "9876501003",
+      "platformFamilyId": "PF-30001",
+      "advisorMhfId": "MHF500007",
+      "selfRegistered": false
+    },
+    {
+      "label": "Arjun Reddy self-registers (Prospect of John Smith)",
+      "name": "Arjun Reddy",
+      "pan": "ARJPR5555R",
+      "mobile": "9876504001",
+      "platformFamilyId": "PF-30040",
+      "advisorMhfId": null,
+      "selfRegistered": true
+    }
+  ]
+}

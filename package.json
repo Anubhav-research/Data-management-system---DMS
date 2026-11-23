@@ -1,0 +1,29 @@
+{
+  "name": "mh-dms-split",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Money Honey DMS split demo: Prospect DMS and Investor DMS, two separate websites joined only by the bridge.",
+  "workspaces": ["apps/*", "packages/*"],
+  "engines": { "node": ">=20.19.0" },
+  "scripts": {
+    "dev:all": "node scripts/dev-all.mjs",
+    "build:all": "npm run build -w apps/prospect-dms && npm run build -w apps/investor-dms",
+    "qa:all": "node qa/run-all.mjs",
+    "reset:all": "node scripts/reset-all.mjs",
+    "stop:bridge": "node scripts/service.mjs stop bridge",
+    "start:bridge": "node scripts/service.mjs start bridge",
+    "stop:p-api": "node scripts/service.mjs stop p-api",
+    "start:p-api": "node scripts/service.mjs start p-api",
+    "stop:i-api": "node scripts/service.mjs stop i-api",
+    "start:i-api": "node scripts/service.mjs start i-api",
+    "stop:tp-sim": "node scripts/service.mjs stop tp-sim",
+    "start:tp-sim": "node scripts/service.mjs start tp-sim",
+    "stop:content": "node scripts/service.mjs stop content",
+    "start:content": "node scripts/service.mjs start content",
+    "market:feed": "node scripts/market-feed.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.49.1"
+  }
+}

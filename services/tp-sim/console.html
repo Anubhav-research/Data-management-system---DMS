@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Transaction Platform Simulator</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1f2328; --muted:#6b7280; --line:#e5e7eb; --warn:#b42318; --accent:#7a4cc2; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#16181d; --card:#1f2228; --ink:#e8eaed; --muted:#9aa0a6; --line:#33363d; } }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background:var(--bg); color:var(--ink); }
+  .banner { background:var(--warn); color:#fff; text-align:center; font-weight:700; letter-spacing:.06em; padding:8px; }
+  main { max-width:1200px; margin:0 auto; padding:16px; display:grid; gap:16px; }
+  .grid { display:grid; gap:16px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; }
+  h1 { font-size:18px; margin:0; } h2 { font-size:14px; margin:0 0 10px; }
+  label { display:block; font-size:12px; color:var(--muted); margin:6px 0 2px; }
+  input, select { width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--ink); }
+  button { margin-top:10px; padding:6px 12px; border-radius:6px; border:1px solid var(--line); background:var(--ink); color:var(--card); cursor:pointer; }
+  button.ghost { background:transparent; color:var(--ink); }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:500; }
+  .wrap { overflow-x:auto; }
+  .muted { color:var(--muted); font-size:12px; }
+  .tag { display:inline-block; padding:1px 6px; border-radius:10px; border:1px solid var(--line); font-size:11px; }
+  #msg { min-height:20px; font-size:13px; }
+</style>
+</head>
+<body>
+<div class="banner">SIMULATOR – NOT A REAL SYSTEM</div>
+<main>
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+    <h1>Transaction Platform simulator (tp-sim)</h1>
+    <div><button class="ghost" onclick="load()">Refresh</button> <button class="ghost" onclick="resetAll()">Reset</button></div>
+  </div>
+  <div id="msg" class="muted"></div>
+  <div class="grid">
+    <section>
+      <h2>Register PAN / Self-register a client</h2>
+      <label>Example</label>
+      <select id="ex" onchange="useExample()"><option value="">Choose an example…</option></select>
+      <label>Name</label><input id="r_name" />
+      <label>PAN</label><input id="r_pan" placeholder="AAAAA9999A" />
+      <label>Mobile</label><input id="r_mobile" />
+      <label>Platform family ID (blank = new family)</label><input id="r_fam" placeholder="PF-30001" />
+      <label>Mapped advisor</label><select id="r_adv"></select>
+      <label><input type="checkbox" id="r_self" style="width:auto" /> Self-registered (client registered on their own)</label>
+      <button onclick="register()">Register</button>
+    </section>
+    <section>
+      <h2>Add investment</h2>
+      <label>Client (CID)</label><select id="i_cid"></select>
+      <label>Date</label><input id="i_date" type="date" />
+      <label>Product</label><select id="i_prod"><option>MF Equity</option><option>MF Debt</option><option>FD</option><option>NCD</option><option>Bonds</option></select>
+      <label>Amount (₹)</label><input id="i_amt" type="number" value="50000" />
+      <button onclick="invest()">Add investment</button>
+    </section>
+    <section>
+      <h2>Map to advisor</h2>
+      <label>Client (CID)</label><select id="m_cid"></select>
+      <label>Advisor</label><select id="m_adv"></select>
+      <button onclick="mapAdv()">Map</button>
+    </section>
+  </div>
+  <section>
+    <h2>Registered clients</h2>
+    <div class="wrap"><table><thead><tr><th>CID</th><th>Name</th><th>PAN</th><th>Mobiles</th><th>Platform family</th><th>Advisor</th><th>Registered</th><th>Investments</th></tr></thead><tbody id="rows"></tbody></table></div>
+  </section>
+</main>
+<script>
+let S = null
+const inr = (n) => '₹' + Number(n || 0).toLocaleString('en-IN')
+const d = (t) => new Date(t).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+const $ = (id) => document.getElementById(id)
+function say(t, bad) { $('msg').textContent = t; $('msg').style.color = bad ? 'var(--warn)' : '' }
+async function call(method, url, body) {
+  const r = await fetch(url, { method, headers: { 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined })
+  const j = await r.json(); if (!r.ok) throw new Error(j.error || r.statusText); return j
+}
+async function load() {
+  S = await call('GET', '/console/state')
+  const adv = '<option value="">(not mapped)</option>' + S.advisors.map((a) => `<option value="${a.mhfId}">${esc(a.name)} (${a.mhfId})</option>`).join('')
+  $('r_adv').innerHTML = adv; $('m_adv').innerHTML = adv
+  const cids = S.clients.map((c) => `<option value="${c.cid}">${c.cid} – ${esc(c.name)}</option>`).join('')
+  $('i_cid').innerHTML = cids; $('m_cid').innerHTML = cids
+  $('ex').innerHTML = '<option value="">Choose an example…</option>' + S.examples.map((e, i) => `<option value="${i}">${esc(e.label)}</option>`).join('')
+  $('rows').innerHTML = [...S.clients].sort((a, b) => b.registeredAt - a.registeredAt).map((c) => `<tr><td>${c.cid}</td><td>${esc(c.name)} ${c.selfRegistered ? '<span class="tag">self</span>' : ''}</td><td>${c.pan}</td><td>${c.mobiles.join(', ')}</td><td>${c.platformFamilyId}</td><td>${c.advisorName ? esc(c.advisorName) : '<span class="muted">not mapped</span>'}</td><td>${d(c.registeredAt)}</td><td>${c.investments.length ? c.investments.map((i) => `${new Date(i.date).toLocaleDateString('en-IN')} · ${esc(i.product)} · ${inr(i.amount)}`).join('<br>') : '<span class="muted">none</span>'}</td></tr>`).join('')
+  $('i_date').value = new Date().toISOString().slice(0, 10)
+}
+function useExample() { const e = S.examples[$('ex').value]; if (!e) return; $('r_name').value = e.name; $('r_pan').value = e.pan; $('r_mobile').value = e.mobile; $('r_fam').value = e.platformFamilyId; $('r_adv').value = e.advisorMhfId || ''; $('r_self').checked = e.selfRegistered }
+async function register() {
+  try { const c = await call('POST', '/console/register', { name: $('r_name').value, pan: $('r_pan').value, mobile: $('r_mobile').value, platformFamilyId: $('r_fam').value.trim() || null, advisorMhfId: $('r_adv').value || null, selfRegistered: $('r_self').checked }); say(`Registered ${c.name} as ${c.cid}.`); load() } catch (e) { say(e.message, true) }
+}
+async function invest() { try { const i = await call('POST', '/console/invest', { cid: $('i_cid').value, date: $('i_date').value, product: $('i_prod').value, amount: $('i_amt').value }); say(`Investment ${i.id} added for ${i.cid}.`); load() } catch (e) { say(e.message, true) } }
+async function mapAdv() { try { await call('POST', '/console/map', { cid: $('m_cid').value, advisorMhfId: $('m_adv').value || null }); say('Advisor mapping saved.'); load() } catch (e) { say(e.message, true) } }
+async function resetAll() { if (!confirm('Reset the simulator to its seed?')) return; await call('POST', '/console/reset'); say('Simulator reset.'); load() }
+load().catch((e) => say(e.message, true))
+</script>
+</body>
+</html>

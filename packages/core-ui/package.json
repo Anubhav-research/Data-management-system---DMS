@@ -1,0 +1,13 @@
+{
+  "name": "@mh/core-ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Shared CODE only for both websites: formatters, the server-state sync client and the bridge client. No stores, seeds or data.",
+  "exports": {
+    "./*": "./src/*"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^4.10.38"
+  }
+}
