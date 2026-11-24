@@ -1,7 +1,7 @@
 // GitHub Pages demo: the five back-end services (p-api, i-api, tp-sim, content, bridge) running INSIDE the visitor's
 // browser, in this service worker. GitHub Pages can only serve files, so instead of a server, this worker answers the
 // websites' /api, /bridge, /tp and /content requests with the real service code (bundled by pages/build.mjs), exactly
-// as scripts/prod-gateway.mjs routes them online. Both websites share this one worker, so the bridge works between them.
+// as each website's Vite proxy routes them on a PC. Both websites share this one worker, so the bridge works between them.
 // Data: starts from the published demo data (demo-data.json) and is kept in this browser (IndexedDB); every visitor has
 // their own copy. Nothing is sent anywhere.
 import { Buffer } from './shims/buffer.js'

@@ -8,6 +8,8 @@
 ![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)
 ![frappe-ui](https://img.shields.io/badge/frappe--ui-1.1-0089FF)
 
+**Live demo:** [Prospect DMS](https://anubhav-research.github.io/Data-management-system---DMS/prospect/) · [Investor DMS](https://anubhav-research.github.io/Data-management-system---DMS/investor/) · [Demo home](https://anubhav-research.github.io/Data-management-system---DMS/)
+
 > **Prototype with fictional data.** Telephony, WhatsApp, email and the Transaction Platform are simulated. Do not use it for real client data in its current form.
 
 ---
@@ -23,7 +25,7 @@
 7. [Installation and Setup](#installation-and-setup)
 8. [Environment Variables](#environment-variables)
 9. [How to Run](#how-to-run)
-10. [Deployment](#deployment)
+10. [Live Demo](#live-demo)
 11. [Database Setup](#database-setup)
 12. [Demo Users](#demo-users)
 13. [Screenshots](#screenshots)
@@ -172,7 +174,7 @@ The two websites share **no runtime data**: no store, no database and no API. Ev
 │   ├── tp-sim/                # Transaction Platform simulator + console (port 4103)
 │   ├── bridge/                # the only link between the websites (port 4104) + contract/
 │   └── content/               # Content Hub (port 4105): seed.mjs + seed-files/
-├── scripts/                   # dev-all, reset-all, service start/stop, market feed, content seed, production start + gateway
+├── scripts/                   # dev-all, reset-all, service start/stop, market feed, content seed
 ├── qa/                        # Playwright QA suites (smoke, journeys, junk rules, responsive, split)
 ├── .env.example               # ports, demo keys and flow switches
 ├── package.json               # npm workspaces and scripts
@@ -269,30 +271,21 @@ To run a single website only: `npm run dev -w apps/prospect-dms` (the services m
 
 ---
 
-## Deployment
+## Live Demo
 
-For an online server (Railway, Render or a VPS), everything runs as **one Node process group on one machine with a persistent disk**, just as it does on a PC:
+The demo runs on **GitHub Pages**, with no server:
 
-```
-npm ci && npm run build:all     # build step
-npm start                       # start step (scripts/start-prod.mjs)
-```
-
-`npm start` runs the five services on `127.0.0.1` only (never reachable from the internet) and the **gateway** (`scripts/prod-gateway.mjs`), which is the only public part. The gateway does online what each website's Vite proxy does in development: it serves the built website and forwards `/api`, `/bridge`, `/tp` and `/content` to the services, adding that website's key on the server side. The TP Simulator console and the reset routes of the bridge and the Content Hub are never forwarded.
-
-Set these on the hosting platform (never commit them):
-
-| Variable | Value |
+| Website | Link |
 |---|---|
-| `P_API_KEY`, `I_API_KEY`, `BRIDGE_LOOKUP_KEY`, `MARKET_FEED_KEY` | Four different long random values (at least 24 characters). `npm start` refuses the demo values. |
-| `DATA_DIR` | The persistent disk, for example `/data`. Each service keeps its data in `$DATA_DIR/<service>`. |
-| `PORT` | Public port of Prospect DMS (usually set by the platform; default `8080`) |
-| `IDMS_PUBLIC_PORT` | Public port of Investor DMS (default `8081`) |
-| `PDMS_HOSTNAME`, `IDMS_HOSTNAME` | Optional: serve both websites on one port, chosen by domain name |
+| **Prospect DMS** | [https://anubhav-research.github.io/Data-management-system---DMS/prospect/](https://anubhav-research.github.io/Data-management-system---DMS/prospect/) |
+| **Investor DMS** | [https://anubhav-research.github.io/Data-management-system---DMS/investor/](https://anubhav-research.github.io/Data-management-system---DMS/investor/) |
+| Demo home page | [https://anubhav-research.github.io/Data-management-system---DMS/](https://anubhav-research.github.io/Data-management-system---DMS/) |
 
-The flow switches (`FLOW_*`) and `INVESTOR_DATA_IN_PDMS` work as described in [Environment Variables](#environment-variables). The health check address is `/healthz`.
+Sign in with any demo MHF ID from the login screen (see [Demo Users](#demo-users)); any password works.
 
-The DMS login is the demo login (see [Demo Users](#demo-users)). Keeping the repository private does not restrict who can open the deployed websites, so limit access to the websites separately.
+How it works: GitHub Pages can only serve files, so the five back-end services (p-api, i-api, tp-sim, content, bridge) run **inside the visitor's browser** in a service worker (`pages/sw.js`), using the same service code as on a PC. Both websites share that worker, so the bridge works between them when they are open in two tabs of the same browser. The data starts from the published demo data, and each visitor's changes stay in their own browser (the home page has **Start over** to go back to the original data).
+
+To update the demo: run `npm run build:pages` (it takes this PC's current demo data as the starting data) and publish `pages-dist/` on the `gh-pages` branch.
 
 ---
 
