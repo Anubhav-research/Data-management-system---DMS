@@ -1,0 +1,1 @@
+var e={key:`prospect`,name:`Prospect DMS`,title:`MH Prospect DMS`,badge:`PROSPECTS`,sessionKey:`mh-pdms-session`,home:`/prospects`,homeLabel:`Prospects`,homeIcon:`lucide-users`,loginTitle:`Login to Prospect DMS`,other:`Investor DMS`};export{e as t};

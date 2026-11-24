@@ -1,0 +1,1 @@
+var e={key:`investor`,name:`Investor DMS`,title:`MH Investor DMS`,badge:`INVESTORS`,sessionKey:`mh-idms-session`,home:`/investors`,homeLabel:`Investors`,homeIcon:`lucide-banknote`,loginTitle:`Login to Investor DMS`,other:`Prospect DMS`};export{e as t};
