@@ -8,7 +8,7 @@
 ![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)
 ![frappe-ui](https://img.shields.io/badge/frappe--ui-1.1-0089FF)
 
-**Live demo:** [Prospect DMS](https://anubhav-research.github.io/Data-management-system---DMS/prospect/) · [Investor DMS](https://anubhav-research.github.io/Data-management-system---DMS/investor/) · [Demo home](https://anubhav-research.github.io/Data-management-system---DMS/)
+**Live demo:** [Prospect DMS](https://anubhav-research.github.io/Data-management-system---DMS/prospect/) · [Investor DMS](https://anubhav-research.github.io/Data-management-system---DMS/investor/)
 
 > **Prototype with fictional data.** Telephony, WhatsApp, email and the Transaction Platform are simulated. Do not use it for real client data in its current form.
 
@@ -279,11 +279,10 @@ The demo runs on **GitHub Pages**, with no server:
 |---|---|
 | **Prospect DMS** | [https://anubhav-research.github.io/Data-management-system---DMS/prospect/](https://anubhav-research.github.io/Data-management-system---DMS/prospect/) |
 | **Investor DMS** | [https://anubhav-research.github.io/Data-management-system---DMS/investor/](https://anubhav-research.github.io/Data-management-system---DMS/investor/) |
-| Demo home page | [https://anubhav-research.github.io/Data-management-system---DMS/](https://anubhav-research.github.io/Data-management-system---DMS/) |
 
 Sign in with any demo MHF ID from the login screen (see [Demo Users](#demo-users)); any password works.
 
-How it works: GitHub Pages can only serve files, so the five back-end services (p-api, i-api, tp-sim, content, bridge) run **inside the visitor's browser** in a service worker (`pages/sw.js`), using the same service code as on a PC. Both websites share that worker, so the bridge works between them when they are open in two tabs of the same browser. The data starts from the published demo data, and each visitor's changes stay in their own browser (the home page has **Start over** to go back to the original data).
+How it works: GitHub Pages can only serve files, so the five back-end services (p-api, i-api, tp-sim, content, bridge) run **inside the visitor's browser** in a service worker (`pages/sw.js`), using the same service code as on a PC. Both websites share that worker, so the bridge works between them when they are open in two tabs of the same browser. The data starts from the published demo data, and each visitor's changes stay in their own browser.
 
 To update the demo: run `npm run build:pages` (it takes this PC's current demo data as the starting data) and publish `pages-dist/` on the `gh-pages` branch.
 
