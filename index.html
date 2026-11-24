@@ -2,73 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Money Honey DMS Demo</title>
-<link rel="icon" href="prospect/favicon-pdms.svg">
-<style>
-  :root { --bg: #f8f8f8; --card: #fff; --ink: #171717; --muted: #6b6b6b; --line: #e8e8e8; --blue: #2563eb; --green: #16a34a; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #141414; --card: #1e1e1e; --ink: #f2f2f2; --muted: #a3a3a3; --line: #2e2e2e; --blue: #60a5fa; --green: #4ade80; } }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 Inter, system-ui, -apple-system, "Segoe UI", sans-serif; }
-  main { max-width: 760px; margin: 0 auto; padding: 56px 16px; }
-  header { display: flex; align-items: center; gap: 12px; }
-  header img { width: 40px; height: 40px; }
-  h1 { font-size: 24px; margin: 0; font-weight: 600; }
-  .lead { color: var(--muted); margin: 14px 0 28px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
-  a.card { display: block; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; color: inherit; text-decoration: none; transition: border-color .15s, transform .15s; }
-  a.card:hover { border-color: var(--ink); transform: translateY(-1px); }
-  .tag { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: #fff; border-radius: 4px; padding: 1px 6px; }
-  .card h2 { font-size: 18px; margin: 10px 0 4px; font-weight: 600; }
-  .card p { margin: 0; color: var(--muted); font-size: 14px; }
-  .go { margin-top: 14px; font-weight: 500; font-size: 14px; }
-  .note { margin-top: 28px; border-top: 1px solid var(--line); padding-top: 18px; color: var(--muted); font-size: 13.5px; }
-  .note ul { padding-left: 18px; margin: 8px 0; }
-  button { font: inherit; font-size: 13.5px; background: transparent; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
-  button:hover { border-color: var(--ink); }
-  #msg { margin-left: 8px; }
-</style>
+<title>Prospect DMS</title>
+<!-- No separate home page (product owner, 24 Nov 2026): the site address opens Prospect DMS. -->
+<meta http-equiv="refresh" content="0; url=prospect/">
+<script>location.replace('prospect/' + location.hash)</script>
 </head>
-<body>
-<main>
-  <header><img src="prospect/assets/mh-logo.png" alt=""><h1>Money Honey DMS · Demo</h1></header>
-  <p class="lead">Two separate websites joined only by a controlled bridge. Open either one and sign in with a demo MHF ID (the login screen lists them; any password works).</p>
-  <div class="grid">
-    <a class="card" href="prospect/">
-      <span class="tag" style="background:var(--blue)">PROSPECTS</span>
-      <h2>Prospect DMS</h2>
-      <p>Pool, Prospects, Leads, Investor Family, calls, events and the handover to Investor DMS.</p>
-      <div class="go">Open Prospect DMS →</div>
-    </a>
-    <a class="card" href="investor/">
-      <span class="tag" style="background:var(--green)">INVESTORS</span>
-      <h2>Investor DMS</h2>
-      <p>Investors, Deals, portfolios, the family log and the handover inbox from Prospect DMS.</p>
-      <div class="go">Open Investor DMS →</div>
-    </a>
-  </div>
-  <div class="note">
-    <strong>About this demo</strong>
-    <ul>
-      <li>All names, numbers and records are sample data.</li>
-      <li>Everything runs in your browser. What you change is kept in this browser only; other people see their own copy.</li>
-      <li>Open both websites in two tabs of the same browser to see the bridge between them.</li>
-    </ul>
-    <button id="reset" type="button">Start over with the original demo data</button><span id="msg"></span>
-  </div>
-</main>
-<script>
-  document.getElementById('reset').onclick = async function () {
-    var msg = document.getElementById('msg')
-    if (!('serviceWorker' in navigator)) { msg.textContent = 'Not available in this browser.'; return }
-    if (!confirm('Go back to the original demo data? Your changes in this browser are removed.')) return
-    msg.textContent = 'Resetting…'
-    var reg = await navigator.serviceWorker.register('sw.js', { scope: './' })
-    await navigator.serviceWorker.ready
-    var w = reg.active
-    navigator.serviceWorker.addEventListener('message', function (e) { if (e.data === 'started-over') msg.textContent = 'Done. Open a website to continue.' }, { once: true })
-    w.postMessage('start-over')
-  }
-</script>
-</body>
+<body><a href="prospect/">Open Prospect DMS</a></body>
 </html>
