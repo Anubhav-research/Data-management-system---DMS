@@ -23,13 +23,14 @@
 7. [Installation and Setup](#installation-and-setup)
 8. [Environment Variables](#environment-variables)
 9. [How to Run](#how-to-run)
-10. [Database Setup](#database-setup)
-11. [Demo Users](#demo-users)
-12. [Screenshots](#screenshots)
-13. [What Is Simulated](#what-is-simulated)
-14. [Future Improvements](#future-improvements)
-15. [Contribution Guidelines](#contribution-guidelines)
-16. [License](#license)
+10. [Deployment](#deployment)
+11. [Database Setup](#database-setup)
+12. [Demo Users](#demo-users)
+13. [Screenshots](#screenshots)
+14. [What Is Simulated](#what-is-simulated)
+15. [Future Improvements](#future-improvements)
+16. [Contribution Guidelines](#contribution-guidelines)
+17. [License](#license)
 
 ---
 
@@ -171,7 +172,7 @@ The two websites share **no runtime data**: no store, no database and no API. Ev
 │   ├── tp-sim/                # Transaction Platform simulator + console (port 4103)
 │   ├── bridge/                # the only link between the websites (port 4104) + contract/
 │   └── content/               # Content Hub (port 4105): seed.mjs + seed-files/
-├── scripts/                   # dev-all, reset-all, service start/stop, market feed, content seed
+├── scripts/                   # dev-all, reset-all, service start/stop, market feed, content seed, production start + gateway
 ├── qa/                        # Playwright QA suites (smoke, journeys, junk rules, responsive, split)
 ├── .env.example               # ports, demo keys and flow switches
 ├── package.json               # npm workspaces and scripts
@@ -264,6 +265,33 @@ On Windows, the firewall asks once per port whether to allow network access. Cho
 | `npm run qa:all` | Build and run every QA suite and write `qa/REPORT.md`. Needs `dev:all` running. **It resets the data.** |
 
 To run a single website only: `npm run dev -w apps/prospect-dms` (the services must be running for data).
+
+---
+
+## Deployment
+
+For an online server (Railway, Render or a VPS), everything runs as **one Node process group on one machine with a persistent disk**, just as it does on a PC:
+
+```
+npm ci && npm run build:all     # build step
+npm start                       # start step (scripts/start-prod.mjs)
+```
+
+`npm start` runs the five services on `127.0.0.1` only (never reachable from the internet) and the **gateway** (`scripts/prod-gateway.mjs`), which is the only public part. The gateway does online what each website's Vite proxy does in development: it serves the built website and forwards `/api`, `/bridge`, `/tp` and `/content` to the services, adding that website's key on the server side. The TP Simulator console and the reset routes of the bridge and the Content Hub are never forwarded.
+
+Set these on the hosting platform (never commit them):
+
+| Variable | Value |
+|---|---|
+| `P_API_KEY`, `I_API_KEY`, `BRIDGE_LOOKUP_KEY`, `MARKET_FEED_KEY` | Four different long random values (at least 24 characters). `npm start` refuses the demo values. |
+| `DATA_DIR` | The persistent disk, for example `/data`. Each service keeps its data in `$DATA_DIR/<service>`. |
+| `PORT` | Public port of Prospect DMS (usually set by the platform; default `8080`) |
+| `IDMS_PUBLIC_PORT` | Public port of Investor DMS (default `8081`) |
+| `PDMS_HOSTNAME`, `IDMS_HOSTNAME` | Optional: serve both websites on one port, chosen by domain name |
+
+The flow switches (`FLOW_*`) and `INVESTOR_DATA_IN_PDMS` work as described in [Environment Variables](#environment-variables). The health check address is `/healthz`.
+
+The DMS login is the demo login (see [Demo Users](#demo-users)). Keeping the repository private does not restrict who can open the deployed websites, so limit access to the websites separately.
 
 ---
 
