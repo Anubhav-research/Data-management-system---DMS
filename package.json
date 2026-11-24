@@ -10,6 +10,7 @@
     "dev:all": "node scripts/dev-all.mjs",
     "build:all": "npm run build -w apps/prospect-dms && npm run build -w apps/investor-dms",
     "start": "node scripts/start-prod.mjs",
+    "build:pages": "node pages/build.mjs",
     "qa:all": "node qa/run-all.mjs",
     "reset:all": "node scripts/reset-all.mjs",
     "stop:bridge": "node scripts/service.mjs stop bridge",

@@ -62,3 +62,6 @@ Thumbs.db
 desktop.ini
 ~$*
 .~lock.*
+
+# GitHub Pages demo build (npm run build:pages; published on the gh-pages branch)
+pages-dist/

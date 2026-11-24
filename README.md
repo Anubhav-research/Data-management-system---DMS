@@ -262,6 +262,7 @@ On Windows, the firewall asks once per port whether to allow network access. Cho
 | `npm run reset:all` | Return both websites, the bridge, the simulator and the Content Hub to their seed data (the audit log is archived, never edited). **This erases all current data.** |
 | `npm run stop:<service>` / `npm run start:<service>` | Stop or start one service: `p-api`, `i-api`, `tp-sim`, `bridge`, `content` (for example, to demo "bridge down") |
 | `npm run market:feed -- <file.xlsx \| file.json>` | Publish a Market Update through the automation feed |
+| `npm run build:pages` | Build the GitHub Pages demo into `pages-dist/`: both websites, with the five services running inside the visitor's browser and this PC's current demo data as the starting data (`pages/`) |
 | `npm run qa:all` | Build and run every QA suite and write `qa/REPORT.md`. Needs `dev:all` running. **It resets the data.** |
 
 To run a single website only: `npm run dev -w apps/prospect-dms` (the services must be running for data).
