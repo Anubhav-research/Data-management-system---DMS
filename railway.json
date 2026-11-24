@@ -4,7 +4,7 @@
     "buildCommand": "npm run build:all"
   },
   "deploy": {
-    "startCommand": "npm start",
+    "startCommand": "node scripts/start-prod.mjs",
     "healthcheckPath": "/healthz",
     "healthcheckTimeout": 120,
     "restartPolicyType": "ON_FAILURE",
