@@ -1,9 +1,11 @@
 // i-api: the Investor DMS back end and its own JSON database (data/idms-db.json).
-// Accepts only the Investor DMS key, plus ONE route for the bridge: the Yes/No number check (flow F3).
+// Accepts only the Investor DMS key, plus TWO routes for the bridge: the Yes/No number check (flow F3) and the
+// dashboard figures per person, counts and amounts only (flow F5, figures.mjs).
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadEnv, send, readBody, appendJsonl, readJsonl } from '../lib/common.mjs'
 import { startStateServer } from '../lib/state-server.mjs'
+import { investorFigures } from './figures.mjs'
 
 const env = loadEnv()
 const DATA = path.join(path.dirname(fileURLToPath(import.meta.url)), 'data')
@@ -32,9 +34,11 @@ async function lookup(req, res, m, url, { getState }) {
 startStateServer({
   name: 'i-api', port: env.I_API_PORT, host: env.HOST, key: env.I_API_KEY,
   dataDir: path.join(path.dirname(fileURLToPath(import.meta.url)), 'data'), dbFile: 'idms-db.json',
-  extraKeys: { [env.BRIDGE_LOOKUP_KEY]: [/^\/lookup$/] },
+  extraKeys: { [env.BRIDGE_LOOKUP_KEY]: [/^\/lookup$/, /^\/figures$/] },
   extraRoutes: [
     ['POST', /^\/lookup$/, lookup],
+    // F5: numbers per employee ID for the Prospect DMS dashboard
+    ['POST', /^\/figures$/, async (req, res, m, url, { getState }) => send(res, 200, investorFigures(getState(), await readBody(req)))],
     // F3 answers given (counts only) for the Data Boundary page of Investor DMS
     ['GET', /^\/api\/f3-answers$/, (req, res) => send(res, 200, { items: readJsonl(F3LOG).reverse().slice(0, 300) })],
   ],

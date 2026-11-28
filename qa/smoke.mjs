@@ -8,12 +8,12 @@ const SITES = [
   { name: 'Prospect DMS', base: P, tag: 'P',
     routes: ['/dashboard', '/pool', '/prospects', '/leads', '/investor-family', '/notes', '/tasks', '/events', '/calendar', '/call-logs', '/whatsapp-logs', '/email-logs',
       '/record/CRM-LEAD-2026-00014', '/record/CRM-LEAD-2026-00014?tab=data', '/record/CRM-LEAD-2026-00021?tab=data',
-      '/junk', '/settings/is-mapping', '/settings/pool-sources', '/settings/users', '/settings/import'],
-    adminOnly: /unassigned-family|junk|settings/, otherSite: ['/investors', '/deals', '/unassigned', '/portfolio'] },
+      '/junk', '/settings/is-mapping', '/settings/pool-sources', '/settings/users', '/settings/import', '/approvals', '/exceptions'],
+    adminOnly: /unassigned-family|junk|settings|exceptions/, otherSite: ['/investors', '/deals', '/unassigned', '/portfolio'] },
   { name: 'Investor DMS', base: I, tag: 'I',
     routes: ['/dashboard', '/investors', '/deals', '/notes', '/tasks', '/events', '/calendar', '/call-logs', '/whatsapp-logs', '/email-logs', '/portfolio',
-      '/record/CID60902', '/record/CID60902?tab=data', '/unassigned', '/junk', '/settings/is-mapping', '/settings/users'],
-    adminOnly: /unassigned|junk|settings/, otherSite: ['/pool', '/prospects', '/leads', '/investor-family', '/settings/import'] },
+      '/record/CID60902', '/record/CID60902?tab=data', '/unassigned', '/junk', '/settings/is-mapping', '/settings/users', '/approvals', '/exceptions'],
+    adminOnly: /unassigned|junk|settings|exceptions/, otherSite: ['/pool', '/prospects', '/leads', '/investor-family', '/settings/import'] },
 ]
 // record visibility by role: the seeded records belong to IS Anubhav (u_is1) and Emily Davis (u_is2) under TL Rohit
 const browser = await launch()
@@ -25,6 +25,16 @@ for (const site of SITES) {
       await go(page, site.base, r, 800)
       const invalid = (await page.locator('text=Invalid page or not permitted to access').count()) > 0
       const expectInvalid = r === '/does-not-exist' || site.otherSite.includes(r) || (role !== 'Admin' && site.adminOnly.test(r))
+      // dashboard (docs/DASHBOARD_SPEC.md): the sections each role may see, nothing more (DB-01..DB-03)
+      if (r === '/dashboard') {
+        const got = await page.locator('[data-testid^=dash-section-]').evaluateAll((l) => l.map((e) => e.dataset.testid.replace('dash-section-', '')).join(','))
+        const L = site.tag === 'P' ? ['overview,calling,messaging,follow', ',team', ',sources'] : ['overview,deals,investments,book,calling', ',team', ',sources,ops']
+        const want = role === 'Admin' ? L.join('') : role === 'IS' ? L[0] : L[0] + L[1]
+        const picker = (await page.locator('[data-testid=dash-scope]').count()) > 0
+        const ok = got === want && picker === (role !== 'IS')
+        results.push({ id: `${site.tag} ${role} dashboard sections`, ok, detail: ok ? '' : `sections ${got} (want ${want}), picker ${picker}` })
+        if (!ok) problems.push(`[${site.tag} ${role}] dashboard: sections ${got} (want ${want}), picker ${picker}`)
+      }
       if (r.startsWith('/record')) { results.push({ id: `${site.tag} ${role} ${r}`, ok: true }); continue } // visibility depends on the owner
       const ok = invalid === expectInvalid
       results.push({ id: `${site.tag} ${role} ${r}`, ok, detail: ok ? '' : invalid ? 'unexpectedly invalid' : 'should be the invalid page' })

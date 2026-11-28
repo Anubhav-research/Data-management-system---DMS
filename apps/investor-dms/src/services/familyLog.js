@@ -11,8 +11,8 @@ const ACTIVE_STAGES = ['Investor', 'Unassigned']
 const MONTHS_18 = 18 * 30.44 * DAY
 
 /** The family's current value, from every investor group carrying the Family ID (one family can span several groups). */
-export function familyEntry(familyId) {
-  const groups = db().clients.filter((c) => c.familyId === familyId && ACTIVE_STAGES.includes(c.stage))
+export function familyEntry(familyId, known = null) {
+  const groups = known || db().clients.filter((c) => c.familyId === familyId && ACTIVE_STAGES.includes(c.stage))
   if (!groups.length) return null
   const lastAssigned = (c) => Math.max(0, ...(c.ownershipHistory || []).filter((h) => h.userId === c.assignedTo).map((h) => h.from || 0))
   const assigned = groups.filter((c) => c.stage === 'Investor' && c.assignedTo).sort((a, b) => lastAssigned(b) - lastAssigned(a))[0]
@@ -52,11 +52,13 @@ export async function sendFamilyLog() {
 /** Full daily snapshot for reconciliation (split prompt §4 F2). */
 export async function sendSnapshot() {
   if (!flowOn('F2')) return { off: true }
-  const ids = [...new Set(db().clients.filter((c) => c.familyId && ACTIVE_STAGES.includes(c.stage)).map((c) => c.familyId))]
-  const entries = ids.map(familyEntry).filter(Boolean)
+  // every family at once (thousands): group the investors by Family ID in one pass, not one search per family
+  const byFamily = new Map()
+  for (const c of db().clients) if (c.familyId && ACTIVE_STAGES.includes(c.stage)) (byFamily.get(c.familyId) || byFamily.set(c.familyId, []).get(c.familyId)).push(c)
+  const entries = [...byFamily.entries()].map(([id, groups]) => familyEntry(id, groups)).filter(Boolean)
   const r = await bridge('POST', '/family-log', { mode: 'snapshot', entries })
   if (!r.ok) return { error: r.status }
-  for (const e of entries) db().f2Last[e.familyId] = sig(e)
+  db().f2Last = { ...db().f2Last, ...Object.fromEntries(entries.map((e) => [e.familyId, sig(e)])) } // written once
   recordSent('snapshot', entries, 'sent')
   return { sent: entries.length }
 }

@@ -12,6 +12,7 @@ import { startBackgroundJobs } from './services/jobs'
 import { migrateData } from './services/migrate'
 import { SITE } from './site'
 import { setContentUser } from '@mh/core-ui/content/hub.js'
+import '@/composables/theme' // applies the saved light / dark theme on start, not only after opening Preferences
 
 async function start() {
   const app = createApp(App)

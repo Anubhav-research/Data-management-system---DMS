@@ -3,6 +3,7 @@
 //  1. Record journey: every record shows where it came from (Pool), then Pool -> Prospect -> Lead (-> Investor).
 //     Older data had a single "Moved to Lead" / "Moved to Prospect" / "Moved to Investor Family" entry.
 //  2. Wording: no "handover" in anything a user reads (activity, notifications).
+import { reactive, toRaw } from 'vue'
 import { useDb } from '@/stores/db'
 
 const HOUR = 3600000, DAY = 24 * HOUR
@@ -104,13 +105,13 @@ export function migrateData() {
 function stripWordingMarker(db) {
   const RE = / ?\[wording\b[^\]]*(?:\]|$)/g // also a marker cut short at the end of a text
   let n = 0
+  // read the plain data (fast with thousands of records); change a text through its reactive object so it is saved
   const walk = (o) => {
-    if (!o || typeof o !== 'object') return
     for (const k of Object.keys(o)) {
       const v = o[k]
-      if (typeof v === 'string') { if (v.includes("[wording")) { o[k] = v.replace(RE, ''); n++ } } else if (v && typeof v === 'object') walk(v)
+      if (typeof v === 'string') { if (v.includes('[wording')) { reactive(o)[k] = v.replace(RE, ''); n++ } } else if (v && typeof v === 'object') walk(v)
     }
   }
-  walk(db.$state)
+  walk(toRaw(db.$state))
   return n
 }

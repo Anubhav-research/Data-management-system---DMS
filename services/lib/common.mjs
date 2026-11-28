@@ -52,7 +52,7 @@ export function send(res, status, body, headers = {}) {
 export function readBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = []; let size = 0
-    req.on('data', (c) => { size += c.length; if (size > 20e6) { reject(new Error('too large')); req.destroy() } else chunks.push(c) })
+    req.on('data', (c) => { size += c.length; if (size > 150e6) { reject(new Error('too large')); req.destroy() } else chunks.push(c) })
     req.on('end', () => { const s = Buffer.concat(chunks).toString('utf8'); try { resolve(s ? JSON.parse(s) : {}) } catch { reject(new Error('bad json')) } })
     req.on('error', reject)
   })

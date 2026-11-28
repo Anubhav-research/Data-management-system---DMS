@@ -1,5 +1,6 @@
 // One-time data fixes for data already on the server (safe to run on every start: only old-format entries change).
 // No "handover" in anything a user reads: the record source and the "Received from Prospect DMS" activity.
+import { reactive, toRaw } from 'vue'
 import { useDb } from '@/stores/db'
 import { clientName } from './lifecycle'
 
@@ -100,13 +101,13 @@ function seedJunkLog(db) {
 function stripWordingMarker(db) {
   const RE = / ?\[wording\b[^\]]*(?:\]|$)/g // also a marker cut short at the end of a text
   let n = 0
+  // read the plain data (fast with thousands of records); change a text through its reactive object so it is saved
   const walk = (o) => {
-    if (!o || typeof o !== 'object') return
     for (const k of Object.keys(o)) {
       const v = o[k]
-      if (typeof v === 'string') { if (v.includes("[wording")) { o[k] = v.replace(RE, ''); n++ } } else if (v && typeof v === 'object') walk(v)
+      if (typeof v === 'string') { if (v.includes('[wording')) { reactive(o)[k] = v.replace(RE, ''); n++ } } else if (v && typeof v === 'object') walk(v)
     }
   }
-  walk(db.$state)
+  walk(toRaw(db.$state))
   return n
 }

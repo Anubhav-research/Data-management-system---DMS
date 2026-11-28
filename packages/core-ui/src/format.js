@@ -115,3 +115,14 @@ export function maskCard(c) { const d = String(c || '').replace(/\D/g, ''); retu
 export function toInputDate(v) { const d = toDate(v); return d ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` : '' }
 export function toInputTime(v) { const d = toDate(v); return d ? `${pad(d.getHours())}:${pad(d.getMinutes())}` : '' }
 export function combineDateTime(date, time) { if (!date) return null; return new Date(`${date}T${time || '00:00'}:00`).getTime() }
+
+/** Talk time from seconds, short, so a big total stays readable (product owner, 26 Nov 2026):
+ *  "45m", "5h 9m"; from 100 hours "523 hrs"; from 1,000 hours "1k hrs", "1.2k hrs". Used by every dashboard card. */
+export function fmtTalk(sec) {
+  const m = Math.round((sec || 0) / 60)
+  if (m < 60) return `${m}m`
+  const h = m / 60
+  if (h < 100) return `${Math.floor(h)}h ${m % 60}m`
+  if (h < 1000) return `${Math.round(h)} hrs`
+  return `${(h / 1000).toFixed(1).replace(/\.0$/, '')}k hrs` // 1k, 1.1k, 1.2k ... 2k
+}

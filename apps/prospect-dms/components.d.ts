@@ -13,7 +13,6 @@ declare module 'vue' {
   export interface GlobalComponents {
     ActivityTab: typeof import('./src/components/record/ActivityTab.vue')['default']
     AdvisorPicker: typeof import('./src/components/modals/AdvisorPicker.vue')['default']
-    AnalyseCard: typeof import('./src/components/dashboard/AnalyseCard.vue')['default']
     ApprovalBar: typeof import('./src/components/record/ApprovalBar.vue')['default']
     AttendeePicker: typeof import('./src/components/AttendeePicker.vue')['default']
     AudioPlayer: typeof import('./src/components/calls/AudioPlayer.vue')['default']

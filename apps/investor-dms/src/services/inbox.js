@@ -103,6 +103,7 @@ function applyHandover(h, contract, status) {
     Object.assign(c, status)
     // 5. Assigned To = converting advisor; Source IS = converting advisor; Data Code = that advisor's own code
     c.assignedTo = advisor?.id || null; c.sourceIs = advisor?.id || null; c.dataCode = advisor?.dataCodes?.[0] || null
+    c.originalSource = h.sourceName || null // contract 1.1.0; older handovers and migrated investors have none
     if (!advisor) { c.stage = 'Unassigned'; c.unassignedSince = now() }
     c.ownershipHistory = advisor ? [{ userId: advisor.id, dataCode: c.dataCode, from: now(), to: null }] : []
     s.clients.unshift(c)

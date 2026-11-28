@@ -102,12 +102,13 @@ const tagClass = (t) => (t === 'PRIMARY' ? 'border-outline-blue-3 bg-surface-blu
         <p v-if="c.members.length < 2" class="text-ink-gray-5">No group members.</p>
       </div>
     </div>
-    <!-- Ownership (supervisor-only, GEN-006): Assigned To is in the record header; Data Code and Source IS stay here -->
-    <div v-if="isSupervisor() && c.stage === 'Investor'" class="border-t px-5 py-3">
+    <!-- Ownership (supervisors and Admin, GEN-006; Original Source is Admin only): Assigned To is in the record header; Data Code and Source IS stay here -->
+    <div v-if="(isSupervisor() || isAdmin()) && c.stage === 'Investor'" class="border-t px-5 py-3">
       <button class="flex w-full items-center gap-1.5 py-1 text-lg text-ink-gray-8" @click="openSec.owner = !openSec.owner"><span :class="openSec.owner ? 'lucide-chevron-down' : 'lucide-chevron-right'" class="size-4" />Ownership</button>
       <dl v-if="openSec.owner" class="mt-1 grid grid-cols-[110px_1fr] gap-y-2 pl-5 text-sm">
         <dt class="text-ink-gray-6">Data Code</dt><dd class="text-right text-ink-gray-7">{{ c.dataCode || '-' }}</dd>
         <dt class="text-ink-gray-6">Source IS</dt><dd class="text-right text-ink-gray-7">{{ db.userById(c.sourceIs)?.name || '-' }}<div v-if="db.userById(c.sourceIs)" class="text-xs tabular text-ink-gray-5">{{ db.userById(c.sourceIs).mhf_id }}</div></dd>
+        <template v-if="isAdmin()"><dt class="text-ink-gray-6">Original Source</dt><dd class="text-right text-ink-gray-7" data-testid="original-source">{{ c.originalSource || 'Not available' }}</dd></template>
       </dl>
     </div>
   </aside>

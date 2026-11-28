@@ -2,7 +2,7 @@
 // browser, in this service worker. GitHub Pages can only serve files, so instead of a server, this worker answers the
 // websites' /api, /bridge, /tp and /content requests with the real service code (bundled by pages/build.mjs), exactly
 // as each website's Vite proxy routes them on a PC. Both websites share this one worker, so the bridge works between them.
-// Data: starts from the published demo data (demo-data.json) and is kept in this browser (IndexedDB); every visitor has
+// Data: starts from the published demo data (demo-data.json.gz) and is kept in this browser (IndexedDB); every visitor has
 // their own copy. Nothing is sent anywhere.
 import { Buffer } from './shims/buffer.js'
 import { loadAll, seedFiles, flush, wipe } from './shims/node-fs.js'
@@ -60,7 +60,12 @@ self.fetch = (input, init = {}) => {
 // ---------------------------------------------------------------- start: load the data, then start the services
 let ready = null
 async function installDemoData(version) {
-  const snap = await (await realFetch(BASE + 'demo-data.json', { cache: 'no-store' })).json()
+  // the starting data is gzipped (demo-data.json.gz); a server that already unzipped it on the way is fine too
+  const res = await realFetch(BASE + 'demo-data.json.gz', { cache: 'no-store' })
+  const bytes = new Uint8Array(await res.arrayBuffer())
+  const zipped = bytes[0] === 0x1f && bytes[1] === 0x8b
+  const text = zipped ? await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).text() : new TextDecoder().decode(bytes)
+  const snap = JSON.parse(text)
   await wipe()
   seedFiles(Object.entries(snap.files).map(([p, b64]) => [p, Buffer.from(b64, 'base64')]))
   fs.writeFileSync(VERSION_FILE, version || snap.version)

@@ -47,7 +47,7 @@ The system is split into **two separate websites**, each with its own back end a
 | **Prospect DMS** (blue) | People **not yet registered** on the Transaction Platform: Pool, Prospects, Leads, and the families of converted investors (Investor Family) | http://localhost:5175 |
 | **Investor DMS** (green) | People **registered** on the Transaction Platform: Investors, Unassigned Investors, Deals, AUM | http://localhost:5176 |
 
-The two websites share **no runtime data**: no store, no database and no API. Everything that crosses between them goes through the **bridge** service, as five defined flows. Each flow can be switched on or off in `.env` (`FLOW_F1` … `FLOW_F4`) and is written to an append-only, hash-chained audit log.
+The two websites share **no runtime data**: no store, no database and no API. Everything that crosses between them goes through the **bridge** service, as six defined flows. Each flow can be switched on or off in `.env` (`FLOW_F1` … `FLOW_F5`) and is written to an append-only, hash-chained audit log.
 
 | Flow | Direction | What crosses |
 |---|---|---|
@@ -56,6 +56,7 @@ The two websites share **no runtime data**: no store, no database and no API. Ev
 | F2 family log | Investor → Prospect | `{familyId, advisorMhfId, status, investedLast18Months, updatedAt}` |
 | F3 number check | Prospect asks; Investor DMS and the platform answer | Yes / No per mobile number or PAN |
 | F4 busy blocks | Both ways | `{userMhfId, start, end, allDay}` |
+| F5 investor figures | Prospect asks; Investor DMS answers | Numbers only per employee ID (calls, deals closed and their amount, pipeline, book by status, to-do counts) for the "Investor DMS" part of the Prospect DMS dashboard. "Lost" is sent for Admin only. No client, name or record ID. |
 
 ---
 
@@ -68,12 +69,14 @@ The two websites share **no runtime data**: no store, no database and no API. Ev
 - **Investor Family:** families that still have members left to convert. When the last member is accepted by Investor DMS, the family leaves the list and the IS who converted it gets a congratulation notification.
 - **Data Import (CSV)** with a protected-number check against Investor DMS, and **IS Mapping** to move records between specialists.
 - **Junk** and **Unassigned Family** sections for Admin.
+- **One dashboard for both websites.** Every figure adds Prospect DMS's records and Investor DMS's numbers for the same people and period, for example all calls made in both. A click asks "Prospect DMS or Investor DMS" and opens that website's list (Investor DMS in a new tab). Sections: headline cards and today's to-do, Pipeline (first call to deal), Clients now, Calling, Messaging, Team (TL+), Sources (Admin) and Compare. Investor DMS's numbers come through flow F5, numbers only.
 
 ### Investor DMS
 - **Investors list** with an **AUM** column (current value, gain in ₹ and %, refreshed at the end of each day) and quick filters.
 - **Deals**, **Portfolio**, **Unassigned Investors** and **Junk** (with a downloadable log).
 - **Daily jobs**, for example moving investors without an investment for 18 months to Unassigned.
 - **Inbox** that receives handovers from Prospect DMS and assigns them to the converting IS.
+- **Dashboard** with this website's own data only: deals (closed = marked Completed), pipeline, calling, the book of investors, the team, and the Unassigned queue for Admin. Money invested and AUM headline figures are left to the Transaction Platform.
 
 ### In both websites
 - **Client record** with tabs: Activity, Calls, WhatsApp, Emails, Notes, Events, Documents and Data (Deals in Investor DMS).
@@ -85,7 +88,7 @@ The two websites share **no runtime data**: no store, no database and no API. Ev
   - Only the record's IS, the people above them, and Admin may message a client.
 - **WhatsApp tab:** one person and one number at a time. Attach from the computer or from the Document Repository, or paste a copied document with Ctrl+V.
 - **Emails tab** in the Frappe CRM style: newest first, Reply / Reply All, TO / CC / BCC limited to the family's saved addresses, emoji, attachments and email templates.
-- **Dashboards** with 30 / 60 / 90-day periods, a team / person scope, "Needs attention", charts, a grouped team table and an **Analyse** chart builder. Every number drills down to the exact records.
+- **Dashboards** built card by card from the product owner's spec: *My work today* (live), Calling, Pipeline or Book of investors, Deals, Investor Family, Leakage, Team (team leaders and above, A–Z, no ranking), Sources and Admin operations (Admin). Period: Today to Last 90 days or a custom range, compared with the previous period of the same length. **Every number opens the list showing exactly its records**, with a removable "From Dashboard" chip. Each card has an (i) with its rule.
 - **Lists** with search, quick filters, an advanced filter, multi-key sort and pagination.
 - **Notes, Tasks, Events, Calendar**, **Call / WhatsApp / Email logs** and **Notifications**.
 - **Settings:** users and access switches, templates, calendar, defaults and preferences.
@@ -264,6 +267,7 @@ On Windows, the firewall asks once per port whether to allow network access. Cho
 | `npm run reset:all` | Return both websites, the bridge, the simulator and the Content Hub to their seed data (the audit log is archived, never edited). **This erases all current data.** |
 | `npm run stop:<service>` / `npm run start:<service>` | Stop or start one service: `p-api`, `i-api`, `tp-sim`, `bridge`, `content` (for example, to demo "bridge down") |
 | `npm run market:feed -- <file.xlsx \| file.json>` | Publish a Market Update through the automation feed |
+| `node qa/dashboard.mjs [quick]` | Dashboard tests DB-01…DB-14 on both websites (read-only; needs `dev:all`). DB-12 runs on a throwaway copy: `node qa/dashboard-handover.mjs <served pages-dist URL>` |
 | `npm run build:pages` | Build the GitHub Pages demo into `pages-dist/`: both websites, with the five services running inside the visitor's browser and this PC's current demo data as the starting data (`pages/`) |
 | `npm run qa:all` | Build and run every QA suite and write `qa/REPORT.md`. Needs `dev:all` running. **It resets the data.** |
 

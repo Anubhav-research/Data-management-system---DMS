@@ -1,306 +1,491 @@
-// Investor DMS dashboard (product owner, 21 Nov 2026): the same page and rules as the Prospect DMS dashboard, built
-// around what this website runs - investors (Prospect investor, Active, Inactive), their AUM, and deals (products,
-// amounts, outcome). Only this website's own data. Scope by hierarchy: an advisor sees their own book, a team
-// leader and above their downline (one team or one person on request), Admin everything. No targets, no ranking.
-// Every figure carries the records behind it (`drill`): a click opens the list showing exactly those records
-// (?ids=...&from=...). Counts use the same rules as the lists they open (QA TS-21).
+// Investor DMS dashboard, version 3 (product owner, 27 Nov 2026). Only this website's own data. The same frame as
+// Prospect DMS (picker, compare, requests, period). What each reader asks:
+//   IS                   - "how are my deals and calls going, what is planned, what do I do today"
+//   TL / VP / President  - the same for their team, who to coach (effort vs results), every person, teams compared
+//   Admin                - everyone, plus the Unassigned Investors queue
+// Version 3 removed money invested and AUM headline cards, the Investments section, Top 10 by AUM, Sources and most
+// Admin operations: investments are shown on the Transaction Platform. "Closed" = a deal marked Completed, with its
+// final amount. Deals are plans: their amount is not certain until the investor invests, so planned amounts are
+// always shown as "planned". "Lost" (moved to Unassigned) is shown to Admin only.
+// Every number opens the list showing exactly its records (?ids=...&from=...) with the removable "From Dashboard" chip.
 import { useDb } from '@/stores/db'
-import { visibleUserIds, isAdmin, downline } from './access'
-import { myPendingApprovals } from './approvals'
-import { STAGE_ROUTE } from '@/data/masters'
-import { shownInLists } from './investorSignals' // the lists leave some investors out: the dashboard counts the same ones
+import { perRun, byPerson, plainStore } from '@mh/core-ui/dash/data.js'
+import { visibleUserIds, isAdmin, isSupervisor, downline } from './access'
+import { myPendingApprovals, approve, reject } from './approvals'
+import { STAGE_ROUTE, LIMITS, CALL_OUTCOMES, AUM_BANDS } from '@/data/masters'
+import { remDays, addMonths, clientName, fullName } from './lifecycle'
+import { investmentSignals } from './investorSignals'
+import { DEF } from '@/data/dashboardDefinitions'
+import * as R from '@mh/core-ui/dash/rules.js'
+import * as C from '@mh/core-ui/dash/cards.js'
+import { teamOf } from '@mh/core-ui/dash/admin.js'
+import { weekHeat } from '@mh/core-ui/dash/cards.js'
+import { inrShort, fmtTalk } from '@mh/core-ui/format.js'
+import { adminOperations } from './dashboardAdmin'
 
-const db = () => useDb()
-const DAY = 86400000
-export const inP = (t, p) => t != null && t >= p.from && t < p.to
+// While the dashboard is worked out it reads the plain data (fast with thousands of records); see core-ui dash/data.js
+const { db, run } = plainStore(useDb)
+export { db as dashDb }
+const { DAY, inP, isConnected, fig, pct, change } = R
+const ids = (l) => l.map((x) => x.id)
+const uniq = (l) => [...new Set(l)]
+const sum = (l, f) => l.reduce((t, x) => t + (Number(f(x)) || 0), 0)
+const lakh = (v) => Math.round((v / 1e5) * 10) / 10
+const hourLabel = (h) => `${h % 12 || 12} ${h < 12 ? 'am' : 'pm'}`
 
-// ---------------------------------------------------------------- period (as Prospect DMS)
-export const RANGES = ['Today', 'This week', 'This month', 'This quarter', 'Custom']
-const startOfDay = (t = Date.now()) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime() }
-export function periodOf(f) {
-  const d0 = new Date(startOfDay())
-  if (f.range === 'Today') return { from: d0.getTime(), to: d0.getTime() + DAY }
-  if (f.range === 'This week') { const s = new Date(d0); s.setDate(d0.getDate() - ((d0.getDay() + 6) % 7)); return { from: s.getTime(), to: s.getTime() + 7 * DAY } }
-  if (f.range === 'This month') return { from: new Date(d0.getFullYear(), d0.getMonth(), 1).getTime(), to: new Date(d0.getFullYear(), d0.getMonth() + 1, 1).getTime() }
-  if (f.range === 'This quarter') { const q = Math.floor(d0.getMonth() / 3) * 3; return { from: new Date(d0.getFullYear(), q, 1).getTime(), to: new Date(d0.getFullYear(), q + 3, 1).getTime() } }
-  const from = f.from ? new Date(`${f.from}T00:00:00`).getTime() : d0.getTime() - 29 * DAY
-  const to = f.to ? new Date(`${f.to}T00:00:00`).getTime() + DAY : d0.getTime() + DAY
-  return { from, to }
+// ---------------------------------------------------------------- scope (same picker as Prospect DMS)
+// Everyone / My team, Me, the teams (Alpha, Beta ...) and the people in view; several teams, or several people, can be
+// chosen to compare them. Values: '' · 'user:<id>' / 'users:<id>,<id>' · 'team:<name>' / 'teams:<name>,<name>'
+const teamName = (id) => teamOf((x) => db().userById(x), id)
+const GREEK = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta', 'Iota', 'Kappa', 'Lambda', 'Mu']
+const byTeamOrder = (a, b) => ((GREEK.indexOf(a) + 1 || 99) - (GREEK.indexOf(b) + 1 || 99)) || a.localeCompare(b)
+export function parseScope(sel) {
+  const m = String(sel || '').match(/^(users?|teams?):(.+)$/)
+  return m ? { kind: m[1].startsWith('user') ? 'users' : 'teams', list: m[2].split(',').filter(Boolean) } : { kind: 'all', list: [] }
 }
-export function previousOf(f, p) {
-  const upTo = Math.min(Date.now(), p.to) - p.from
-  const back = (months) => { const d = new Date(p.from); d.setMonth(d.getMonth() - months); return d.getTime() }
-  const from = f.range === 'Today' ? p.from - DAY : f.range === 'This week' ? p.from - 7 * DAY : f.range === 'This month' ? back(1) : f.range === 'This quarter' ? back(3) : p.from - (p.to - p.from)
-  const caption = { Today: 'vs yesterday', 'This week': 'vs same days last week', 'This month': 'vs same days last month', 'This quarter': 'vs same days last quarter' }[f.range] || 'vs the period before'
-  return { from, to: from + (f.range === 'Custom' ? p.to - p.from : upTo), caption }
+function teamMembers(t) {
+  const s = db()
+  if (s.userById(t)) return [t, ...downline(t)]
+  return s.users.filter((u) => u.active !== false && u.role !== 'Admin' && teamName(u.id) === t).map((u) => u.id)
 }
-function days(p) { const out = []; for (let t = p.from; t < Math.min(p.to, startOfDay() + DAY); t += DAY) out.push(t); return out }
-const dayKey = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
-
-// ---------------------------------------------------------------- scope
 export function scopeUsers(sel) {
-  const vis = visibleUserIds()
-  if (sel?.startsWith('user:')) return [sel.slice(5)].filter((id) => vis.includes(id))
-  if (sel?.startsWith('team:')) { const id = sel.slice(5); return [id, ...downline(id)].filter((x) => vis.includes(x)) }
+  const vis = visibleUserIds(); const { kind, list } = parseScope(sel)
+  if (kind === 'users') return list.filter((id) => vis.includes(id))
+  if (kind === 'teams') return uniq(list.flatMap(teamMembers)).filter((id) => vis.includes(id))
   return vis
 }
 export function scopeOptions() {
   const s = db(); const vis = visibleUserIds(); const me = s.me
-  const people = s.users.filter((u) => vis.includes(u.id) && u.role !== 'Admin' && u.active !== false)
-  const leaders = people.filter((u) => ['TL', 'VP', 'President'].includes(u.role) && u.id !== me?.id)
-  return [
-    { label: isAdmin() ? 'Everyone' : me?.role === 'IS' ? 'Me' : 'My whole team', value: '' },
-    ...leaders.map((u) => ({ label: `${u.name}'s team`, value: `team:${u.id}`, group: 'Teams' })),
-    ...people.map((u) => ({ label: u.name, sub: u.role, value: `user:${u.id}`, group: 'People' })),
-  ]
+  const people = s.users.filter((u) => vis.includes(u.id) && u.role !== 'Admin' && u.active !== false && u.id !== me?.id).sort((a, b) => a.name.localeCompare(b.name))
+  const teamNames = isAdmin() || ['VP', 'President'].includes(me?.role) ? uniq(people.map((u) => teamName(u.id))).filter((t) => t !== 'Management').sort(byTeamOrder) : []
+  const teams = teamNames.map((t) => ({ kind: 'team', key: t, label: t, sub: `${people.filter((u) => u.role === 'IS' && teamName(u.id) === t).length} IS` }))
+  const persons = people.map((u) => ({ kind: 'user', key: u.id, label: u.name, sub: u.mhf_id }))
+  const top = isAdmin() ? [{ kind: 'all', key: '', label: 'Everyone' }] : [{ kind: 'all', key: '', label: 'My team (all)' }, { kind: 'user', key: me.id, label: 'Me', sub: me.mhf_id, me: true }]
+  return [...top, ...teams, ...persons]
 }
-/** The team a person belongs to: their team leader's team; above that, Management. */
-export function teamOf(uid) {
-  const s = db(); let u = s.userById(uid)
-  for (let i = 0; u && i < 8; i++) { if (u.role === 'TL') return `${u.name}'s team`; u = s.userById(u.reportsTo) }
-  return 'Management'
-}
+export const showScope = () => isAdmin() || isSupervisor()
 
 // ---------------------------------------------------------------- drill-down
-const listTo = (path, ids, label) => ({ path, query: { ids: ids.join(','), from: label } })
-export const drillCalls = (ids, label) => [{ label: 'Call Logs', count: ids.length, to: listTo('/call-logs', ids, label) }]
-export const drillDeals = (ids, label) => [{ label: 'Deals', count: ids.length, to: listTo('/deals', ids, label) }]
-export const drillEvents = (ids, label) => [{ label: 'Events', count: ids.length, to: listTo('/events', ids, label) }]
-export const drillTasks = (ids, label) => [{ label: 'Tasks', count: ids.length, to: listTo('/tasks', ids, label) }]
-export const drillMessages = (channel, ids, label) => [{ label: channel === 'wa' ? 'WhatsApp Logs' : 'Email Logs', count: ids.length, to: listTo(channel === 'wa' ? '/whatsapp-logs' : '/email-logs', ids, label) }]
-export function drillClients(ids, label) {
-  const by = {}
-  for (const id of new Set(ids)) { const st = db().clientById(id)?.stage; if (!st || !STAGE_ROUTE[st] || (st !== 'Investor' && !isAdmin())) continue; (by[st] ||= []).push(id) }
-  return Object.entries(by).map(([st, list]) => ({ label: st === 'Investor' ? 'Investors' : st === 'Unassigned' ? 'Unassigned Investors' : st, count: list.length, to: listTo(STAGE_ROUTE[st], list, label) }))
-}
-
-// ---------------------------------------------------------------- facts
-const callsIn = (p, users) => db().calls.filter((c) => inP(c.at, p) && users.includes(c.madeBy))
-const connected = (c) => c.status === 'Connected'
-const ownerOf = (d) => db().clientById(d.clientId)?.assignedTo
-const dealsIn = (p, users) => db().deals.filter((d) => inP(d.start, p) && users.includes(ownerOf(d)))
-const invested = (d) => (d.status === 'Completed' ? Number(d.finalAmount ?? d.total ?? 0) : 0)
-const myInvestors = (users) => db().clients.filter((c) => c.stage === 'Investor' && shownInLists(c) && users.includes(c.assignedTo))
-const pct = (a, b) => (b ? Math.round((a / b) * 1000) / 10 : null)
-const change = (v, was) => (v == null || was == null ? null : was === 0 ? (v === 0 ? 0 : null) : Math.round(((v - was) / Math.abs(was)) * 100))
-const decided = (l) => l.filter((d) => ['Completed', 'Rejected', 'Expired'].includes(d.status))
-
-// AUM card line: the gain over the money invested, at the last end-of-day values
-const short = (v) => (Math.abs(v) >= 1e7 ? `₹${(Math.abs(v) / 1e7).toFixed(1)}Cr` : Math.abs(v) >= 1e5 ? `₹${(Math.abs(v) / 1e5).toFixed(1)}L` : `₹${Math.abs(Math.round(v)).toLocaleString('en-IN')}`)
-function gainText(aum, invested, n) { if (!invested) return `${n} investor${n === 1 ? '' : 's'} · end-of-day value`; const g = aum - invested; return `${g >= 0 ? '+' : '−'}${short(g)} (${g >= 0 ? '+' : '−'}${Math.abs(Math.round((g / invested) * 1000) / 10)}%) on ${short(invested)} invested` }
-/** Headline numbers with their change against the comparison period and a daily trend. */
-export function headline(p, prev, users) {
-  const dl = dealsIn(p, users); const dlP = dealsIn(prev, users)
-  const won = dl.filter((d) => d.status === 'Completed'); const wonP = dlP.filter((d) => d.status === 'Completed')
-  const sum = (l) => l.reduce((t, d) => t + invested(d), 0)
-  const c = callsIn(p, users); const cp = callsIn(prev, users); const conn = c.filter(connected); const connP = cp.filter(connected)
-  const inv = myInvestors(users); const aum = inv.reduce((t, x) => t + Number(x.aum || 0), 0)
-  const active = inv.filter((x) => x.invStatus === 'Active')
-  const series = (list, at, val = () => 1) => days(p).map((d) => list.filter((x) => at(x) >= d && at(x) < d + DAY).reduce((s, x) => s + val(x), 0))
-  return [
-    { key: 'invested', label: 'Money invested', value: sum(won), money: true, sub: `${won.length} completed deal${won.length === 1 ? '' : 's'}`, delta: change(sum(won), sum(wonP)), spark: series(won, (d) => d.start, invested), drill: drillDeals(won.map((d) => d.id), 'Completed deals') },
-    { key: 'won', label: 'Deals completed', value: won.length, delta: change(won.length, wonP.length), spark: series(won, (d) => d.start), drill: drillDeals(won.map((d) => d.id), 'Completed deals') },
-    { key: 'winrate', label: 'Win rate', value: pct(won.length, decided(dl).length), suffix: '%', sub: `${won.length} of ${decided(dl).length} decided deals`, delta: change(pct(won.length, decided(dl).length), pct(wonP.length, decided(dlP).length)), drill: drillDeals(decided(dl).map((d) => d.id), 'Decided deals') },
-    { key: 'avg', label: 'Average deal', value: won.length ? Math.round(sum(won) / won.length) : 0, money: true, sub: 'invested per completed deal', delta: change(won.length ? sum(won) / won.length : 0, wonP.length ? sum(wonP) / wonP.length : 0), drill: drillDeals(won.map((d) => d.id), 'Completed deals') },
-    { key: 'aum', label: 'AUM', value: aum, money: true, sub: gainText(aum, inv.reduce((t, x) => t + Number(x.invested || 0), 0), inv.length), drill: drillClients(inv.map((x) => x.id), 'Investors (AUM)'), testid: 'dash-aum' },
-    { key: 'active', label: 'Active investors', value: active.length, sub: `of ${inv.length} investors · now`, drill: drillClients(active.map((x) => x.id), 'Active investors') },
-    { key: 'calls', label: 'Calls made', value: c.length, delta: change(c.length, cp.length), spark: series(c, (x) => x.at), drill: drillCalls(c.map((x) => x.id), 'Calls made') },
-    { key: 'connect', label: 'Connected', value: pct(conn.length, c.length), suffix: '%', sub: `${conn.length} of ${c.length} calls`, delta: change(pct(conn.length, c.length), pct(connP.length, cp.length)), drill: drillCalls(conn.map((x) => x.id), 'Connected calls') },
-  ]
-}
-
-/** The book now: investors by status, with their AUM. */
-export function book(users) {
-  const inv = myInvestors(users)
-  return ['Active', 'Inactive', 'Prospect'].map((st) => {
-    const l = inv.filter((c) => c.invStatus === st)
-    return { status: st, label: st === 'Prospect' ? 'Not invested yet' : st, count: l.length, aum: l.reduce((t, c) => t + Number(c.aum || 0), 0), ids: l.map((c) => c.id) }
-  })
-}
-/** Money invested in the period by product (completed deals: the product rows of each deal, by share of the final amount). */
-export function byProduct(p, users) {
-  const by = {}
-  for (const d of dealsIn(p, users).filter((x) => x.status === 'Completed')) {
-    const rows = d.rows || []; const planned = rows.reduce((t, r) => t + Number(r.amount || 0), 0) || 1; const final = invested(d)
-    for (const r of rows) { const k = r.product || 'Other'; const e = (by[k] ||= { product: k, amount: 0, ids: [] }); e.amount += Math.round((final * Number(r.amount || 0)) / planned); if (!e.ids.includes(d.id)) e.ids.push(d.id) }
+const dCalls = (l, t) => R.drill('/call-logs', 'Call Logs', l, t)
+const dEvents = (l, t) => R.drill('/events', 'Events', l, t)
+const dTasks = (l, t) => R.drill('/tasks', 'Tasks', l, t)
+const dDeals = (l, t) => R.drill('/deals', 'Deals', l, t)
+/** Investors can sit in Investors, Unassigned Investors or Junk (the last two Admin only): one link per list. */
+export function dClients(list, l) {
+  const by = {}; let hidden = 0; let elsewhere = 0; const vis = isAdmin() ? null : visibleUserIds()
+  for (const id of new Set(list)) {
+    const c = db().clientById(id); const st = c?.stage; if (!st || !STAGE_ROUTE[st]) continue
+    if (st !== 'Investor' && vis) { hidden++; continue }
+    if (vis && !vis.includes(c.assignedTo)) { elsewhere++; continue }
+    ;(by[st] ||= []).push(id)
   }
-  return Object.values(by).map((e) => ({ ...e, lakh: Math.round(e.amount / 1e4) / 10 })).sort((a, b) => b.amount - a.amount)
-}
-/** Deals of the period by week and outcome. */
-export function dealsByWeek(p, users) {
-  const ids = {}; const rows = new Map()
-  for (const d of dealsIn(p, users)) {
-    const w = new Date(d.start); w.setHours(0, 0, 0, 0); w.setDate(w.getDate() - ((w.getDay() + 6) % 7)); const k = dayKey(w.getTime())
-    const r = rows.get(k) || { week: k, Scheduled: 0, Completed: 0, Rejected: 0, Expired: 0 }; r[d.status] = (r[d.status] || 0) + 1; rows.set(k, r)
-    ;(ids[`${k}|${d.status}`] ||= []).push(d.id)
-  }
-  return { rows: [...rows.values()].sort((a, b) => a.week.localeCompare(b.week)), ids }
+  const order = ['Investor', 'Unassigned', 'Junk']
+  const links = Object.entries(by).sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0])).map(([st, x]) => ({ label: st === 'Investor' ? 'Investors' : st === 'Unassigned' ? 'Unassigned Investors' : st, count: x.length, to: R.listTo(STAGE_ROUTE[st], x, l) }))
+  if (hidden) links.push({ label: 'Now in Unassigned or Junk', count: hidden, to: null, hint: 'Only Admin can open the Unassigned Investors and Junk lists.' })
+  if (elsewhere) links.push({ label: 'Now with someone outside your view', count: elsewhere, to: null, hint: 'These investors now belong to someone you do not supervise.' })
+  return links
 }
 
-/** What needs doing now (not tied to the period). */
-export function attention(users) {
-  const s = db(); const now = Date.now(); const today = startOfDay()
-  const mine = (c) => c && c.stage === 'Investor' && shownInLists(c) && users.includes(c.assignedTo)
-  const lastCall = (cid) => Math.max(0, ...s.calls.filter((x) => x.clientId === cid && x.direction === 'Outbound').map((x) => x.at))
-  const dueDeals = s.deals.filter((d) => d.status === 'Scheduled' && d.start < now && users.includes(ownerOf(d)))
-  const todayDeals = s.deals.filter((d) => d.status === 'Scheduled' && d.start >= today && d.start < today + DAY && users.includes(ownerOf(d)))
-  const evs = s.events.filter((e) => !e.cancelled && ((e.attendees || []).some((a) => users.includes(a)) || users.includes(e.createdBy)))
-  const overdue = evs.filter((e) => e.type === 'Call Follow-up' && e.start < now && e.start > now - 60 * DAY && e.clientId && lastCall(e.clientId) < e.start && mine(s.clientById(e.clientId)))
-  const missed = s.calls.filter((x) => x.direction === 'Inbound' && x.status !== 'Connected' && x.at > now - 14 * DAY && mine(s.clientById(x.clientId)) && lastCall(x.clientId) < x.at)
-  const reply = s.clients.filter((c) => mine(c) && c.replyWindowUntil > now)
-  const tasks = s.tasks.filter((t) => users.includes(t.assignedTo) && t.due < now && !['Completed', 'Rejected'].includes(t.status) && t.due > now - 60 * DAY)
-  const idle = s.clients.filter((c) => mine(c) && (!c.lastCallAt || c.lastCallAt < now - 60 * DAY))
-  const approvals = myPendingApprovals()
-  const unassigned = isAdmin() ? s.clients.filter((c) => c.stage === 'Unassigned' && shownInLists(c)) : []
-  return [
-    { key: 'dueDeals', icon: 'lucide-handshake', tone: 'red', label: 'Deals waiting for an outcome', hint: 'Their time has passed: mark Completed or Rejected', count: dueDeals.length, drill: drillDeals(dueDeals.map((d) => d.id), 'Deals waiting for an outcome') },
-    { key: 'todayDeals', icon: 'lucide-calendar-clock', tone: 'blue', label: 'Deals today', hint: 'Investment meetings planned for today', count: todayDeals.length, drill: drillDeals(todayDeals.map((d) => d.id), 'Deals today') },
-    { key: 'overdue', icon: 'lucide-phone-missed', tone: 'red', label: 'Followup calls overdue', hint: 'No call since the followup time', count: overdue.length, drill: drillEvents(overdue.map((e) => e.id), 'Followup calls overdue') },
-    { key: 'missed', icon: 'lucide-phone-incoming', tone: 'red', label: 'Missed calls not called back', hint: 'They called in the last 14 days', count: missed.length, drill: drillCalls(missed.map((x) => x.id), 'Missed calls not called back') },
-    { key: 'reply', icon: 'lucide-message-circle', tone: 'green', label: 'Investors who replied', hint: 'Replied in 24 hours: message them freely', count: reply.length, drill: drillClients(reply.map((c) => c.id), 'Investors who replied (24 hours)') },
-    { key: 'tasks', icon: 'lucide-list-todo', tone: 'amber', label: 'Tasks overdue', hint: 'Past their due date and not completed', count: tasks.length, drill: drillTasks(tasks.map((t) => t.id), 'Tasks overdue') },
-    { key: 'idle', icon: 'lucide-hourglass', tone: 'amber', label: 'Not called for 60+ days', hint: 'Investors going cold', count: idle.length, drill: drillClients(idle.map((c) => c.id), 'Not called for 60+ days') },
-    ...(approvals.length ? [{ key: 'approvals', icon: 'lucide-badge-check', tone: 'violet', label: 'Approvals waiting for you', hint: 'Requests that need your decision', count: approvals.length, drill: drillClients(approvals.map((a) => a.clientId), 'Approvals waiting for you') }] : []),
-    ...(isAdmin() ? [{ key: 'unassigned', icon: 'lucide-user-x', tone: 'amber', label: 'Unassigned investors', hint: 'Waiting for an IS', count: unassigned.length, drill: drillClients(unassigned.map((c) => c.id), 'Unassigned investors'), testid: 'dash-unassigned' }] : []),
-  ]
-}
+// ---------------------------------------------------------------- facts (lookups built once per run)
+const callsBy = perRun(() => byPerson(db().calls, (x) => x.madeBy))
+const clientsBy = perRun(() => byPerson(db().clients, (x) => x.assignedTo))
+const dealsBy = perRun(() => byPerson(db().deals, (d) => db().clientById(d.clientId)?.assignedTo))
+const lastCallOf = perRun(() => { const m = new Map(); for (const x of db().calls) if (!(m.get(x.clientId) >= x.at)) m.set(x.clientId, x.at); return m })
+const lastOutboundTo = perRun(() => { const m = new Map(); for (const x of db().calls) if (x.direction === 'Outbound' && !(m.get(x.mobile) >= x.at)) m.set(x.mobile, x.at); return m })
+const fuBy = perRun(() => byPerson(db().events.filter((e) => !e.cancelled && e.type === 'Call Follow-up' && e.clientId), (e) => [e.createdBy, ...(e.attendees || []), db().clientById(e.clientId)?.assignedTo]))
+const callsIn = (p, users) => callsBy()(users).filter((c) => inP(c.at, p))
+const bookOf = (users) => clientsBy()(users).filter((c) => c.stage === 'Investor')
+const dealsOf = (users) => dealsBy()(users)
+const calledSince = (clientId, t) => (lastCallOf().get(clientId) ?? -Infinity) >= t
+const openTask = (t) => !['Completed', 'Rejected', 'Expired'].includes(t.status)
+const DECIDED = ['Completed', 'Rejected', 'Expired']
+const won = (l) => l.filter((d) => d.status === 'Completed')
+const decided = (l) => l.filter((d) => DECIDED.includes(d.status))
+const closedAmount = (l) => sum(won(l), (d) => d.finalAmount)
+const plannedAmount = (l) => sum(l, (d) => d.total)
 
-/** Investors by days since the last call (30 / 60 / 90, as the business works). */
-export const AGE_BUCKETS = [['0–30 days', 0, 30], ['31–60 days', 31, 60], ['61–90 days', 61, 90], ['Over 90 days', 91, Infinity], ['Never called', null, null]]
-export function ageing(users) {
-  const now = Date.now()
-  return ['Active', 'Inactive', 'Prospect'].map((st) => {
-    const list = myInvestors(users).filter((c) => c.invStatus === st)
-    const buckets = AGE_BUCKETS.map(([label, a, b]) => {
-      const ids = list.filter((c) => (a == null ? !c.lastCallAt : c.lastCallAt && Math.floor((now - c.lastCallAt) / DAY) >= a && Math.floor((now - c.lastCallAt) / DAY) <= b)).map((c) => c.id)
-      return { label, ids, count: ids.length }
-    })
-    return { stage: st, label: st === 'Prospect' ? 'Not invested yet' : st, total: list.length, buckets }
-  })
+/** Moves to Unassigned: the date from the record history; the reason from the investor's status (worked out once
+ *  per run and period - the team table asks for it per person). */
+const unassignedMemo = perRun(() => new Map())
+function toUnassigned(p) {
+  const key = `${p.from}|${p.to}`; const memo = unassignedMemo()
+  if (!memo.has(key)) memo.set(key, toUnassignedOf(p))
+  return memo.get(key)
 }
-
-/** Calls per day, how they end, best time to call (as Prospect DMS). */
-export function callsByDay(p, users) {
-  const c = callsIn(p, users); const ids = {}
-  const rows = days(p).map((d) => {
-    const day = c.filter((x) => x.at >= d && x.at < d + DAY); const k = dayKey(d)
-    const groups = { Connected: day.filter((x) => x.direction === 'Outbound' && connected(x)), 'Not connected': day.filter((x) => x.direction === 'Outbound' && !connected(x)), Incoming: day.filter((x) => x.direction === 'Inbound') }
-    for (const [g, l] of Object.entries(groups)) ids[`${k}|${g}`] = l.map((x) => x.id)
-    return { date: k, ...Object.fromEntries(Object.entries(groups).map(([g, l]) => [g, l.length])) }
-  })
-  return { rows, ids, total: c.length }
-}
-export function outcomes(p, users) {
-  const by = {}
-  for (const x of callsIn(p, users)) { const k = connected(x) ? x.subStatus || 'Connected' : 'Not connected'; (by[k] ||= []).push(x.id) }
-  return Object.entries(by).map(([outcome, ids]) => ({ outcome, calls: ids.length, ids })).sort((a, b) => b.calls - a.calls)
-}
-export const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-export function bestHours(users) {
-  const now = Date.now(); const cells = {}
-  const c = db().calls.filter((x) => x.direction === 'Outbound' && users.includes(x.madeBy) && x.at > now - 90 * DAY)
-  for (const x of c) { const d = new Date(x.at); const h = d.getHours(); if (h < 9 || h > 20) continue; const k = `${WEEKDAYS[(d.getDay() + 6) % 7]}|${h}`; (cells[k] ||= { all: [], ok: [] }).all.push(x.id); if (connected(x)) cells[k].ok.push(x.id) }
-  const rows = []; for (const day of WEEKDAYS) for (let h = 9; h <= 20; h++) { const v = cells[`${day}|${h}`]; rows.push({ day, hour: `${h > 12 ? h - 12 : h}${h >= 12 ? 'pm' : 'am'}`, rate: v ? Math.round((v.ok.length / v.all.length) * 100) : null, calls: v ? v.all.length : 0, ids: v ? v.all : [] }) }
-  return { rows, total: c.length, any: rows.some((r) => r.calls) }
-}
-
-/** Team leaders and above: one row per person with their book and their period. */
-export function teamTable(p, users) {
+function toUnassignedOf(p) {
   const s = db()
-  return s.users.filter((u) => users.includes(u.id) && u.role !== 'Admin' && u.active !== false).map((u) => {
-    const inv = myInvestors([u.id]); const dl = dealsIn(p, [u.id]); const won = dl.filter((d) => d.status === 'Completed'); const c = callsIn(p, [u.id])
-    const a = attention([u.id])
-    return { id: u.id, name: u.name, role: u.role, team: teamOf(u.id), investors: inv.length, aum: inv.reduce((t, x) => t + Number(x.aum || 0), 0), active: inv.filter((x) => x.invStatus === 'Active').length,
-      invested: won.reduce((t, d) => t + invested(d), 0), won: won.length, decided: decided(dl).length, winrate: pct(won.length, decided(dl).length), calls: c.length, connected: c.filter(connected).length,
-      overdue: a.find((x) => x.key === 'dueDeals').count + a.find((x) => x.key === 'overdue').count, dealIds: dl.map((d) => d.id), callIds: c.map((x) => x.id), investorIds: inv.map((x) => x.id) }
-  }).sort((a, b) => a.name.localeCompare(b.name))
+  return s.activities.filter((a) => a.type === 'stage' && inP(a.at, p) && /^Moved to Unassigned Investors/.test(a.text)).map((a) => {
+    const c = s.clientById(a.clientId)
+    return { clientId: a.clientId, at: a.at, owner: c?.prevOwner || null, reason: c?.invStatus === 'Prospect' ? '90' : c?.reassignedUntil ? '12m' : '18m' }
+  })
 }
-
-/** Admin: families received from Prospect DMS in the period (each delivery once). */
-export function received(p) {
-  const list = db().inbox.filter((h) => inP(h.receivedAt, p))
-  const acc = list.filter((h) => h.status === 'Accepted')
-  return { accepted: acc.length, rejected: list.filter((h) => h.status === 'Rejected').length, people: acc.reduce((t, h) => t + h.members, 0) }
-}
-
-/** Messages and documents sent in the period, and replies. */
-export function engagement(p, users) {
-  const s = db(); const mineC = (cid) => users.includes(s.clientById(cid)?.assignedTo)
-  const ch = (list) => {
-    const sent = list.filter((m) => m.direction === 'Sent' && inP(m.at, p) && users.includes(m.sentBy))
-    const got = list.filter((m) => m.direction === 'Received' && inP(m.at, p) && mineC(m.clientId))
-    const messaged = new Set(sent.map((m) => m.clientId)); const replied = new Set(got.filter((m) => messaged.has(m.clientId)).map((m) => m.clientId))
-    return { sent, got, rate: pct(replied.size, messaged.size) }
+/** The days (or, for one day, the hours) of the period up to now: the x-axis of the trends. */
+function buckets(p) {
+  if (p.to - p.from <= DAY) { const out = []; for (let h = 0; h < 24; h++) out.push({ from: p.from + h * 3600000, to: p.from + (h + 1) * 3600000, label: hourLabel(h) }); return out.filter((b) => b.from <= Date.now()) }
+  const out = []
+  for (let t = p.from; t < Math.min(p.to, R.startOfDay() + DAY); t += DAY) {
+    const d = new Date(t); const full = `${d.getDate()} ${d.toLocaleString('en-GB', { month: 'short' })}`
+    out.push({ from: t, to: t + DAY, label: !out.length || d.getDate() === 1 ? full : String(d.getDate()), title: full })
   }
-  const wa = ch(s.wa); const em = ch(s.emails); const docs = {}
-  for (const m of wa.sent) if (m.doc) (docs[m.doc.name] ||= { name: m.doc.name, n: 0 }).n++
-  for (const m of em.sent) for (const d of m.docs || []) (docs[d.name] ||= { name: d.name, n: 0 }).n++
-  return { wa, em, docs: Object.values(docs).sort((a, b) => b.n - a.n).slice(0, 5) }
+  return out
+}
+const inB = (b, t) => t >= b.from && t < b.to
+
+// ---------------------------------------------------------------- requests (top bar; same as Prospect DMS)
+const person = (u) => (u ? { name: u.name, code: u.mhf_id || '' } : { name: '—', code: '' })
+const dayLabel = (t) => (t ? new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '')
+function whatChanges(x, c) {
+  if (x.category === 'Group Member' && x.payload?.op === 'add') return [`Add ${fullName(x.payload.member)}${x.payload.member?.relationship ? ` as ${x.payload.member.relationship}` : ''}`]
+  if (x.category === 'Group Member') return [`Remove ${(x.payload?.memberKeys || []).map((k) => fullName(c?.members.find((m) => m.key === k) || {})).filter(Boolean).join(', ') || 'members'} from the group`]
+  return (x.changes || []).map((ch) => {
+    const who = ch.memberName && c && ch.memberName !== clientName(c) ? `${ch.memberName} · ` : ''
+    if (ch.kind === 'add') return `${who}${ch.label}: add ${ch.new}`
+    if (ch.kind === 'delete') return `${who}${ch.label}: remove ${ch.old}`
+    return `${who}${ch.label}: ${ch.old || '(empty)'} → ${ch.new || '(empty)'}`
+  })
+}
+function requests() {
+  const s = db(); const now = Date.now()
+  if (!(isSupervisor() || isAdmin())) return null
+  const byId = new Map()
+  const row = (x) => {
+    byId.set(x.id, x)
+    const c = x.clientId && s.clientById(x.clientId)
+    return {
+      id: x.id, label: c ? clientName(c) : x.category, type: (x.categories || [x.category]).join(', '), lines: whatChanges(x, c),
+      by: { ...person(s.userById(x.requestedBy)), on: dayLabel(x.requestedOn) },
+      approved: (x.chain || []).filter((st) => st.state === 'Approved' || st.state === 'Skipped').map((st) => ({ ...person(s.userById(st.userId)), on: dayLabel(st.at), skipped: st.state === 'Skipped', edited: !!st.edited })),
+      days: Math.floor((now - R.reachedCurrentLevelAt(x)) / DAY), tone: R.approvalTone(x),
+      to: { path: `/record/${x.clientId}`, query: { tab: 'data', approval: x.id } },
+    }
+  }
+  const waiting = myPendingApprovals().map(row).sort((a, b) => b.days - a.days)
+  function decide(id, action) {
+    const x = byId.get(id)
+    try {
+      if (action === 'approve') { approve(x); return { ok: true, message: x.status === 'Approved' ? 'Approved – change applied' : 'Approved – sent to the next level' } }
+      reject(x); return { ok: true, message: 'Rejected – the requester is told' }
+    } catch (e) { return { ok: false, message: e.message } }
+  }
+  return { waiting, decide }
 }
 
-// ---------------------------------------------------------------- Analyse
-const langOf = (c) => c?.members?.[0]?.language || 'Not known'
-const nameOf = (id) => db().userById(id)?.name || 'Unknown'
-export const MEASURES = [
-  { value: 'invested', label: 'Money invested (₹)', unit: '₹', kind: 'deals', money: true },
-  { value: 'won', label: 'Deals completed', unit: 'deals', kind: 'deals' },
-  { value: 'deals', label: 'All deals', unit: 'deals', kind: 'deals' },
-  { value: 'calls', label: 'Calls made', unit: 'calls', kind: 'calls' },
-  { value: 'connected', label: 'Connected calls', unit: 'calls', kind: 'calls' },
-  { value: 'talk', label: 'Talk time (minutes)', unit: 'min', kind: 'calls' },
-  { value: 'wa', label: 'WhatsApp messages sent', unit: 'messages', kind: 'wa' },
-  { value: 'email', label: 'Emails sent', unit: 'emails', kind: 'email' },
+// ---------------------------------------------------------------- overview: headline cards + trend + to-do
+// Product owner, 27 Nov 2026: money invested and AUM are shown on the Transaction Platform, not here. The headline
+// cards are the work done in this website: deals (closed = marked Completed, with their final amount), the pipeline
+// and calling.
+function overview(p, prev, users) {
+  const now = Date.now(); const bs = buckets(p); const per = p.to - p.from <= DAY ? 'by hour' : 'per day'
+  const deals = dealsOf(users); const dp = deals.filter((d) => inP(d.start, p)); const dpp = deals.filter((d) => inP(d.start, prev))
+  const ahead = deals.filter((d) => d.status === 'Scheduled' && (d.end || d.start) >= now)
+  const c = callsIn(p, users); const cp = callsIn(prev, users); const conn = c.filter(isConnected)
+  const cr = pct(conn.length, c.length); const crP = pct(cp.filter(isConnected).length, cp.length)
+  const talk = R.talkTime(c); const talkP = R.talkTime(cp)
+  const personDays = new Set(c.map((x) => `${x.madeBy}|${R.startOfDay(x.at)}`)).size
+  const talkSub = !personDays ? 'No call yet' : users.length > 1 ? `${fmtTalk(talk / personDays)} per IS a day` : `${fmtTalk(talk / personDays)} a day`
+  const dayCalls = (b) => c.filter((x) => inB(b, x.at))
+  const rate = (l) => pct(won(l).length, decided(l).length)
+  const col = (b, i, segs) => ({ key: i, label: b.label, title: b.title || b.label, partial: inB(b, now), segments: segs })
+  // the next 30 days, for the pipeline
+  const days30 = Array.from({ length: 30 }, (_, i) => { const t = R.startOfDay() + i * DAY; const d = new Date(t); const full = `${d.getDate()} ${d.toLocaleString('en-GB', { month: 'short' })}`; return { from: t, to: t + DAY, label: !i || d.getDate() === 1 ? full : String(d.getDate()), title: full } })
+  const trend = {
+    won: { title: `Deals closed ${per} (₹ lakh)`, unit: ' L', columns: bs.map((b, i) => { const l = won(dp).filter((d) => inB(b, d.start))
+      return col(b, i, [{ key: 'v', tone: 'blue', ...fig('Closed', ids(l), dDeals, { value: lakh(closedAmount(l)), listCount: l.length, drillLabel: `${b.title || b.label}: deals closed` }) }]) }) },
+    winRate: { title: `Deal win rate ${per}`, unit: '%', columns: bs.map((b, i) => { const l = decided(dp).filter((d) => inB(b, d.start))
+      return col(b, i, [{ key: 'v', tone: 'blue', ...fig('Win rate', ids(l), dDeals, { value: rate(l) || 0, listCount: l.length, drillLabel: `${b.title || b.label}: deals decided` }) }]) }) },
+    pipeline: { title: 'Pipeline: deals planned for the next 30 days (₹ lakh)', unit: ' L', columns: days30.map((b, i) => { const l = ahead.filter((d) => inB(b, d.start))
+      return { key: i, label: b.label, title: b.title, segments: [{ key: 'v', tone: 'faint', ...fig('Planned', ids(l), dDeals, { value: lakh(plannedAmount(l)), listCount: l.length, drillLabel: `${b.title}: deals planned` }) }] } }) },
+    calls: { title: `Calls ${per}`, legend: [{ label: 'Connected', tone: 'dark' }, { label: 'Not connected', tone: 'light' }], columns: bs.map((b, i) => { const l = c.filter((x) => inB(b, x.at)); return col(b, i, [
+      { key: 'c', tone: 'dark', ...fig('Connected', ids(l.filter(isConnected)), dCalls, { drillLabel: `${b.title || b.label}: connected calls` }) },
+      { key: 'n', tone: 'light', ...fig('Not connected', ids(l.filter((x) => !isConnected(x))), dCalls, { drillLabel: `${b.title || b.label}: calls not connected` }) }]) }) },
+    rate: { title: `Connect rate ${per}`, unit: '%', columns: bs.map((b, i) => { const l = dayCalls(b); const r = pct(l.filter(isConnected).length, l.length)
+      return col(b, i, [{ key: 'r', label: 'Connect rate', tone: 'blue', value: r || 0, listCount: l.length, drill: dCalls(ids(l), `${b.title || b.label}: all calls`) }]) }) },
+    talk: { title: `Talk time ${per} (minutes)`, columns: bs.map((b, i) => { const l = dayCalls(b)
+      return col(b, i, [{ key: 't', label: 'Minutes', tone: 'blue', value: Math.round(R.talkTime(l) / 60), listCount: l.length, drill: dCalls(ids(l), `${b.title || b.label}: all calls`) }]) }) },
+  }
+  const items = [
+    { key: 'won', icon: 'lucide-badge-indian-rupee', label: 'Deals closed', value: closedAmount(dp), fmt: 'money', delta: change(closedAmount(dp), closedAmount(dpp)),
+      sub: won(dp).length ? `${won(dp).length} deals · ${pct(closedAmount(dp), plannedAmount(won(dp))) ?? 0}% of planned` : 'No deal closed yet',
+      spark: bs.map((b) => closedAmount(dp.filter((d) => inB(b, d.start)))), listCount: won(dp).length, drill: dDeals(ids(won(dp)), 'Deals closed') },
+    { key: 'winRate', icon: 'lucide-target', label: 'Deal win rate', value: rate(dp), fmt: 'pct', delta: change(rate(dp), rate(dpp)), sub: `${won(dp).length} of ${decided(dp).length} decided`,
+      spark: bs.map((b) => rate(dp.filter((d) => inB(b, d.start)))), drill: dDeals(ids(decided(dp)), 'Deals decided') },
+    { key: 'pipeline', icon: 'lucide-calendar-clock', label: 'Pipeline (planned)', value: plannedAmount(ahead), fmt: 'money', sub: `${ahead.length} deal${ahead.length === 1 ? '' : 's'} ahead · not certain`,
+      spark: days30.map((b) => plannedAmount(ahead.filter((d) => inB(b, d.start)))), listCount: ahead.length, drill: dDeals(ids(ahead), 'Deals ahead') },
+    { key: 'calls', icon: 'lucide-phone', label: 'Calls', value: c.length, delta: change(c.length, cp.length), sub: `${conn.length} connected`, spark: bs.map((b) => dayCalls(b).length), listCount: c.length, drill: dCalls(ids(c), 'Calls') },
+    { key: 'rate', icon: 'lucide-signal', label: 'Connect rate', value: cr, fmt: 'pct', tone: R.connectTone(cr), delta: change(cr, crP), sub: `${conn.length} of ${c.length} calls`, spark: bs.map((b) => { const d = dayCalls(b); return d.length ? Math.round((d.filter(isConnected).length / d.length) * 100) : null }), drill: dCalls(ids(c), 'All calls') },
+    { key: 'talk', icon: 'lucide-timer', label: 'Talk time', value: talk, fmt: 'time', delta: change(talk, talkP), sub: talkSub, spark: bs.map((b) => R.talkTime(dayCalls(b)) / 60), drill: dCalls(ids(conn), 'Connected calls (talk time)') },
+  ].map((it) => ({ ...it, trend: { ...trend[it.key], info: DEF.trend, per: p.to - p.from <= DAY ? 'hour' : 'day' } }))
+  return { key: 'overview', kind: 'overview', items, side: todo(users) }
+}
+
+/** Today's to-do list (live; not tied to the period). */
+function todo(users) {
+  const s = db(); const now = Date.now(); const d0 = R.startOfDay()
+  const book = bookOf(users); const deals = dealsOf(users)
+  const fu = fuBy()(users)
+  const notBack = s.calls.filter((x) => x.direction === 'Inbound' && !isConnected(x) && users.includes(x.madeBy) && x.at > now - 14 * DAY && !((lastOutboundTo().get(x.mobile) ?? -Infinity) > x.at))
+  const tasks = s.tasks.filter((t) => users.includes(t.assignedTo) && openTask(t))
+  const pending = s.pendingLog && s.pendingLog.madeBy === s.sessionUserId && users.includes(s.sessionUserId) ? s.pendingLog : null
+  const running = book.filter((c) => c.invStatus === 'Prospect' && remDays(c) <= R.TIMER_AMBER_DAYS)
+  const near = book.filter((c) => c.invStatus === 'Inactive' && remDays(c) <= R.TIMER_AMBER_DAYS)
+  const toUpdate = deals.filter((d) => d.status === 'Scheduled' && (d.end || d.start) < now)
+  const a = (key, icon, label, hint, list, open, extra = {}) => ({ key, icon, hint, ...fig(label, list, open, extra) })
+  const items = [
+    a('dealsToday', 'lucide-handshake', 'Deals today', 'Investment meetings planned for today', ids(deals.filter((d) => d.status === 'Scheduled' && d.start >= d0 && d.start < d0 + DAY)), dDeals),
+    a('fuToday', 'lucide-calendar-clock', 'Follow-ups due today', 'Calls promised for today', ids(fu.filter((e) => e.start >= d0 && e.start < d0 + DAY)), dEvents),
+    a('fuOverdue', 'lucide-phone-missed', 'Follow-ups overdue', 'Time passed, no call since', ids(fu.filter((e) => e.start < now && e.start > now - 60 * DAY && !calledSince(e.clientId, e.start))), dEvents),
+    a('running', 'lucide-hourglass', 'Prospect Investors running out', '7 days or less left to invest', ids(running), dClients, { tone: running.length ? 'amber' : null }),
+    a('near', 'lucide-user-x', 'About to go to Unassigned', 'Inactive, 7 days or less left', ids(near), dClients, { tone: near.length ? 'amber' : null }),
+    a('missed', 'lucide-phone-incoming', 'Missed calls to return', 'They called in the last 14 days', ids(notBack), dCalls),
+    a('tasks', 'lucide-list-todo', 'Tasks due or overdue', 'Due today, or past due (last 60 days)', ids(tasks.filter((t) => t.due && t.due < d0 + DAY && t.due > now - 60 * DAY)), dTasks),
+  ]
+  if (pending) items.unshift({ key: 'unsaved', icon: 'lucide-file-warning', label: 'Call log not saved', hint: 'Save the log of your last call', value: 1, drill: pending.clientId ? [{ label: 'Record', count: 1, to: { path: `/record/${pending.clientId}` } }] : null })
+  const n = items.filter((x) => x.value).length
+  return { key: 'actions', title: 'Focus today', icon: 'lucide-list-checks', sub: n ? `${n} thing${n === 1 ? '' : 's'} to act on` : 'Nothing waiting', kind: 'actions', info: DEF.today, items }
+}
+
+// ---------------------------------------------------------------- Deals (period, by meeting date) and the pipeline
+function dealsSection(p, users) {
+  const now = Date.now(); const all = dealsOf(users); const d = all.filter((x) => inP(x.start, p))
+  const ahead = all.filter((x) => x.status === 'Scheduled' && (x.end || x.start) >= now)
+  const w = won(d); const planned = plannedAmount(w); const closed = closedAmount(d)
+  const outcome = [['Closed', w, 'Closed', 'good'], ['Rejected', d.filter((x) => x.status === 'Rejected'), 'Not interested (rejected)', 'crit'], ['Expired', d.filter((x) => x.status === 'Expired'), 'Passed without update (expired)', 'warn'], ['Scheduled', d.filter((x) => x.status === 'Scheduled'), 'Scheduled', 'gray']]
+  const dec = decided(d)
+  // the pipeline by when the meeting is
+  const d0 = R.startOfDay(); const wk = new Date(d0).getDay(); const weekEnd = d0 + ((7 - wk) % 7 || 7) * DAY
+  const slots = [['This week', (x) => x.start < weekEnd], ['Next week', (x) => x.start >= weekEnd && x.start < weekEnd + 7 * DAY], ['Within 30 days', (x) => x.start >= weekEnd + 7 * DAY && x.start < d0 + 30 * DAY], ['Later', (x) => x.start >= d0 + 30 * DAY]]
+  const money = (l) => plannedAmount(l)
+  const byProduct = {}
+  for (const x of d) for (const r of x.rows || []) { const k = r.product || 'Other'; (byProduct[k] ||= { ids: new Set(), amount: 0 }); byProduct[k].ids.add(x.id); byProduct[k].amount += Number(r.amount) || 0 }
+  const productTotal = Object.values(byProduct).reduce((t, x) => t + x.amount, 0)
+  return { key: 'deals', title: 'Deals', icon: 'lucide-handshake', sub: 'Plans to invest: the amount is certain only once the investor invests', cards: [
+    { key: 'dealPath', title: 'From meeting to closed deal', icon: 'lucide-route', sub: 'Deals whose meeting fell in this period · click a step to open its deals', kind: 'steps', ratios: false, wide: true, info: DEF.dealOutcomes, items: [
+      { key: 'all', label: 'Deals in the period', unit: 'deals', value: d.length, listCount: d.length, drill: dDeals(ids(d), 'Deals in the period'), sub: `${inrShort(plannedAmount(d))} planned` },
+      { key: 'decided', label: 'Decided', unit: 'deals', value: dec.length, listCount: dec.length, drill: dDeals(ids(dec), 'Deals decided'), sub: 'closed, rejected or expired' },
+      { key: 'closed', label: 'Closed', unit: 'deals', value: w.length, listCount: w.length, drill: dDeals(ids(w), 'Deals closed'), sub: 'marked Completed' },
+      { key: 'amount', label: 'Closed amount', value: closed, fmt: 'money', listCount: w.length, drill: dDeals(ids(w), 'Deals closed'), sub: `${pct(closed, planned) ?? 0}% of what was planned` },
+      { key: 'avg', label: 'Average deal closed', value: w.length ? Math.round(closed / w.length) : null, fmt: 'money', listCount: w.length, drill: dDeals(ids(w), 'Deals closed'), sub: `${w.length} deal${w.length === 1 ? '' : 's'}` },
+    ] },
+    { key: 'dealOutcomes', title: 'How deals ended', kind: 'donut', caption: 'deals', info: DEF.dealOutcomes, empty: 'No deal in this period.', items: outcome.filter(([, l]) => l.length).map(([label, l, full, tone]) => ({ ...fig(label, ids(l), dDeals, { drillLabel: `Deals: ${full}` }), key: full, tone })) },
+    { key: 'pipelineAhead', title: 'Pipeline ahead', badge: 'Now', kind: 'bars', info: DEF.pipelineAhead, empty: 'No deal planned.', items: slots.map(([label, f], i) => { const l = ahead.filter(f)
+      return { key: i, ...fig(label, ids(l), dDeals, { value: money(l), fmt: 'money', listCount: l.length, drillLabel: `Deals ahead: ${label}` }), note: `${l.length} deal${l.length === 1 ? '' : 's'}` } }) },
+    { key: 'dealProducts', title: 'Deals by product', sub: 'Planned amount in the period', kind: 'bars', scroll: true, info: DEF.dealProducts, empty: 'No deal in this period.',
+      items: Object.entries(byProduct).sort((a, b) => b[1].amount - a[1].amount).map(([k, x]) => ({ key: k, ...fig(k, [...x.ids], dDeals, { value: x.amount, fmt: 'money', listCount: x.ids.size, drillLabel: `Deals: ${k}` }), note: `${Math.round((x.amount / (productTotal || 1)) * 100)}%` })) },
+  ] }
+}
+
+// ---------------------------------------------------------------- Book (now)
+function bookSection(users) {
+  const now = Date.now(); const book = bookOf(users).map((c) => ({ c, sig: investmentSignals(c) }))
+  const status = [['Active', 'Active'], ['Inactive', 'Inactive'], ['Prospect', 'Prospect Investor']].map(([k, label]) => [label, book.filter((x) => x.c.invStatus === k).map((x) => x.c.id)])
+  const soonInactive = book.filter((x) => x.c.invStatus === 'Active' && x.c.lastInvDate && addMonths(x.c.lastInvDate, LIMITS.ACTIVE_MONTHS) - now <= 30 * DAY).map((x) => x.c.id)
+  const prospectEnding = book.filter((x) => x.c.invStatus === 'Prospect' && remDays(x.c) <= 30).map((x) => x.c.id)
+  const notCalled = book.filter((x) => !x.c.lastCallAt || now - x.c.lastCallAt > 60 * DAY).map((x) => x.c.id)
+  return { key: 'book', title: 'Book of investors', icon: 'lucide-briefcase', badge: 'Now', cards: [
+    { key: 'status', title: 'Investors by status', kind: 'donut', caption: 'investors', info: DEF.status, empty: 'No investor.', items: status.filter(([, l]) => l.length).map(([label, l], i) => ({ key: i, tone: { Active: 'dark', 'Prospect Investor': 'mid', Inactive: 'gray' }[label], ...fig(label, l, dClients, { drillLabel: `Investors: ${label}` }) })) },
+    { key: 'bands', title: 'AUM bands', kind: 'bars', info: DEF.bands, items: AUM_BANDS.map(([label, a, z], i) => { const l = book.filter((x) => x.sig.aum > 0 && x.sig.aum >= a && x.sig.aum < z)
+      return { key: i, ...fig(label, l.map((x) => x.c.id), dClients, { drillLabel: `AUM ${label}` }), note: l.length ? inrShort(sum(l, (x) => x.sig.aum)) : '' } }) },
+    { key: 'atRisk', title: 'Needs a call soon', kind: 'figures', cols: 1, info: DEF.atRisk, items: [
+      fig('Turning Inactive within 30 days', soonInactive, dClients, { key: 'inactive', icon: 'lucide-trending-down', tone: soonInactive.length ? 'amber' : null, drillLabel: 'Turning Inactive within 30 days' }),
+      fig('Prospect Investors: 30 days or less left', prospectEnding, dClients, { key: 'prospect', icon: 'lucide-timer', tone: prospectEnding.length ? 'amber' : null, drillLabel: 'Prospect Investors running out' }),
+      fig('Not called in 60 days', notCalled, dClients, { key: 'notCalled', icon: 'lucide-phone-off', drillLabel: 'Not called in 60 days' }),
+    ] },
+  ] }
+}
+
+// ---------------------------------------------------------------- Calling (period)
+// Design review 27 Nov 2026: when investors pick up (weekday × hour), the connect rate against its 75% target, calls by
+// hour of the day, and how calls ended as ranked bars.
+const heatMemo = perRun(() => new Map())
+function heatOf(p, users) {
+  const key = `${p.from}|${p.to}|${users.join(',')}`; const memo = heatMemo()
+  if (!memo.has(key)) memo.set(key, weekHeat(callsIn(p, users), { isConnected, label: hourLabel, open: (l, t) => dCalls(ids(l), `${t}: calls`) }))
+  return memo.get(key)
+}
+function calling(p, users) {
+  const c = callsIn(p, users); const conn = c.filter(isConnected)
+  const ended = [...CALL_OUTCOMES.Investor.map((o) => [o, ids(conn.filter((x) => x.subStatus === o))]), ['Not connected', ids(c.filter((x) => !isConnected(x)))]].filter(([, l]) => l.length).sort((a, b) => b[1].length - a[1].length)
+  const heat = heatOf(p, users)
+  const byHour = Array.from({ length: 24 }, () => []); for (const x of c) byHour[new Date(x.at).getHours()].push(x)
+  const hours = heat.cols.map(({ h, label }) => { const l = byHour[h]; return { key: h, label, title: label, segments: [
+    { key: 'c', tone: 'dark', ...fig('Connected', ids(l.filter(isConnected)), dCalls, { drillLabel: `${label}: connected calls` }) },
+    { key: 'n', tone: 'light', ...fig('Not connected', ids(l.filter((x) => !isConnected(x))), dCalls, { drillLabel: `${label}: calls not connected` }) },
+  ] } })
+  return { key: 'calling', title: 'Calling', icon: 'lucide-phone', cards: [
+    { key: 'heat', title: 'When investors pick up', sub: 'Each weekday and hour of the period', kind: 'heatmap', span2: true, info: DEF.heat, ...heat },
+    { key: 'connectGauge', title: 'Connect rate', kind: 'gauge', info: DEF.gauge, value: pct(conn.length, c.length), target: R.CONNECT_GREEN_AT, label: `${conn.length.toLocaleString('en-IN')} of ${c.length.toLocaleString('en-IN')} calls connected`, listCount: c.length, drill: dCalls(ids(c), 'All calls') },
+    { key: 'byHour', title: 'Calls by hour of the day', kind: 'columns', span2: true, info: DEF.byHour, legend: [{ label: 'Connected', tone: 'dark' }, { label: 'Not connected', tone: 'light' }], columns: hours, height: 200 },
+    { key: 'outcomes', title: 'How calls ended', kind: 'bars', info: DEF.outcomes, empty: 'No calls in this period.', items: ended.map(([label, l], i) => ({ key: i, ...fig(label, l, dCalls, { drillLabel: `Calls: ${label}` }), note: `${Math.round((l.length / Math.max(1, c.length)) * 100)}%` })) },
+  ] }
+}
+
+// ---------------------------------------------------------------- Highlights: what the numbers say, in a sentence each
+function highlights(p, prev, users) {
+  const out = []; const now = Date.now()
+  const fu = fuBy()(users).filter((e) => e.start < now && e.start > now - 60 * DAY && !calledSince(e.clientId, e.start))
+  if (fu.length) out.push({ key: 'overdue', icon: 'lucide-phone-missed', tone: 'warn', title: `${fu.length} follow-up${fu.length === 1 ? '' : 's'} overdue`, text: 'Promised calls to investors not made yet', drill: dEvents(ids(fu), 'Follow-ups overdue') })
+  const upd = dealsOf(users).filter((d) => d.status === 'Scheduled' && (d.end || d.start) < now)
+  if (upd.length) out.push({ key: 'dealsUpdate', icon: 'lucide-file-clock', tone: 'warn', title: `${upd.length} deal${upd.length === 1 ? '' : 's'} to update`, text: 'The meeting has passed: mark each closed or not', drill: dDeals(ids(upd), 'Deals to update') })
+  const d = dealsOf(users).filter((x) => inP(x.start, p)); const w = won(d)
+  if (w.length) out.push({ key: 'won', icon: 'lucide-badge-indian-rupee', tone: 'good', title: `${inrShort(closedAmount(d))} closed`, text: `${w.length} deal${w.length === 1 ? '' : 's'} marked Completed · win rate ${pct(w.length, decided(d).length) ?? 0}%`, drill: dDeals(ids(w), 'Deals closed') })
+  const best = heatOf(p, users).best
+  if (best) out.push({ key: 'bestTime', icon: 'lucide-clock-3', tone: 'info', title: `Best time to call: ${best.day} ${best.hour}`, text: `${best.rate}% of ${best.calls.toLocaleString('en-IN')} calls picked up then`, drill: best.drill })
+  const c = callsIn(p, users); const cp = callsIn(prev, users); const ch = change(c.length, cp.length)
+  if (c.length && out.length < 4) out.push({ key: 'calls', icon: ch == null || ch >= 0 ? 'lucide-trending-up' : 'lucide-trending-down', tone: ch == null ? 'info' : ch >= 0 ? 'good' : 'bad', title: ch == null ? `${c.length.toLocaleString('en-IN')} calls made` : `Calls ${ch >= 0 ? 'up' : 'down'} ${Math.abs(ch) > 999 ? '999+' : Math.abs(ch)}%`, text: `${c.length.toLocaleString('en-IN')} calls, ${pct(c.filter(isConnected).length, c.length)}% connected · ${prev.caption}`, drill: dCalls(ids(c), 'Calls') })
+  return out.slice(0, 4)
+}
+
+// ---------------------------------------------------------------- Team (TL+): who to coach, and every person
+function stats(p, who) {
+  const now = Date.now(); const c = callsIn(p, who); const conn = c.filter(isConnected)
+  const book = bookOf(who); const deals = dealsOf(who); const d = deals.filter((x) => inP(x.start, p))
+  const ahead = deals.filter((x) => x.status === 'Scheduled' && (x.end || x.start) >= now)
+  const set = new Set(who)
+  const cell = (l, open, label, extra = {}) => fig('', l, open, { drillLabel: label, ...extra })
+  const r = pct(won(d).length, decided(d).length); const cr = pct(conn.length, c.length)
+  return {
+    investors: cell(ids(book), dClients, 'Investors'),
+    aum: { value: sum(book, (x) => x.aum), drill: dClients(ids(book), 'Investors (AUM)') },
+    calls: cell(ids(c), dCalls, 'Calls'), rate: { value: cr, tone: R.connectTone(cr), drill: dCalls(ids(conn), 'Connected calls') },
+    closed: cell(ids(won(d)), dDeals, 'Deals closed'), closedAmt: { value: closedAmount(d), drill: dDeals(ids(won(d)), 'Deals closed') },
+    win: { value: r, drill: dDeals(ids(decided(d)), 'Deals decided') },
+    pipeline: { value: plannedAmount(ahead), drill: dDeals(ids(ahead), 'Deals ahead') },
+    unassigned: cell(toUnassigned(p).filter((m) => set.has(m.owner)).map((m) => m.clientId), dClients, 'Moved to Unassigned'),
+  }
+}
+function effortCard(p, people) {
+  const points = []; let idle = 0
+  for (const u of people) {
+    if (u.role !== 'IS') continue
+    const c = callsIn(p, [u.id])
+    if (!c.length) { idle++; continue }
+    const days = new Set(c.map((x) => R.startOfDay(x.at))).size
+    const conn = c.filter(isConnected).length
+    const d = dealsOf([u.id]).filter((x) => inP(x.start, p)); const closedAmt = closedAmount(d)
+    // raw counts too, so a team's figures are pooled (its deals ÷ its working days ...), not an average of averages
+    points.push({ id: u.id, name: u.name, code: u.mhf_id, team: teamName(u.id), raw: { calls: c.length, days, conn, closedAmt, won: won(d).length, decided: decided(d).length },
+      x: Math.round((c.length / days) * 10) / 10,
+      y: { closedAmt: Math.round(closedAmt / days), win: pct(won(d).length, decided(d).length), rate: pct(conn, c.length) } })
+  }
+  return { key: 'effort', title: 'Effort vs results', sub: 'Each dot is an IS', kind: 'effort', wide: true, info: DEF.effort, points, idle, teams: uniq(points.map((x) => x.team)).sort(byTeamOrder),
+    x: { label: 'Calls a day' },
+    ys: [{ key: 'win', label: 'Deal win rate', fmt: 'pct', num: 'won', den: 'decided' }, { key: 'rate', label: 'Connect rate', fmt: 'pct', num: 'conn', den: 'calls' }, { key: 'closedAmt', label: 'Closed amount a day', fmt: 'money', num: 'closedAmt', den: 'days' }] }
+}
+function team(p, users) {
+  const s = db()
+  const people = s.users.filter((u) => users.includes(u.id) && u.role !== 'Admin' && u.active !== false).sort((a, b) => a.name.localeCompare(b.name))
+  // product owner 27 Nov 2026: no money invested; "Lost" (moved to Unassigned) for Admin only
+  const G = { b: 'Book now', a: 'Calling', d: 'Deals', l: 'Lost' }
+  const columns = [['investors', 'Investors', 'b'], ['aum', 'AUM', 'b', 'money'], ['calls', 'Calls', 'a'], ['rate', 'Connect rate', 'a', 'pct'], ['closed', 'Closed', 'd'], ['closedAmt', 'Closed amount', 'd', 'money'],
+    ['win', 'Win rate', 'd', 'pct'], ['pipeline', 'Pipeline', 'd', 'money'], ...(isAdmin() ? [['unassigned', 'To Unassigned', 'l']] : [])]
+    .map(([key, label, g, fmt]) => ({ key, label, group: G[g], fmt }))
+  const open = (k) => (k === 'calls' ? dCalls : k === 'closed' ? dDeals : dClients)
+  const rows = people.map((u) => ({ id: u.id, name: u.name, code: u.mhf_id, group: teamName(u.id), cells: stats(p, [u.id]) }))
+  const money = ['aum', 'rate', 'win', 'pipeline', 'closedAmt']
+  const total = C.totalsRow(rows.map((r) => r.cells), columns.filter((c) => !c.fmt), open)
+  const all = stats(p, ids(people)); for (const k of money) total[k] = all[k]
+  const teams = uniq(rows.map((r) => r.group)).sort((a, b) => (a === 'Management') - (b === 'Management') || byTeamOrder(a, b))
+  const grouped = teams.length > 1
+  const groupTotals = grouped ? Object.fromEntries(teams.map((t) => {
+    const l = rows.filter((r) => r.group === t); const tot = C.totalsRow(l.map((r) => r.cells), columns.filter((c) => !c.fmt), open)
+    const st = stats(p, l.map((r) => r.id)); for (const k of money) tot[k] = st[k]
+    return [t, tot]
+  })) : null
+  const orderedRows = grouped ? teams.flatMap((t) => rows.filter((r) => r.group === t)) : rows
+  return { key: 'team', title: 'Team', icon: 'lucide-users', badge: 'TL+', sub: 'Click a person to see their dashboard.', cards: [
+    effortCard(p, people),
+    { key: 'people', title: 'People', kind: 'table', wide: true, searchable: true, grouped, groupTotals, info: DEF.people, columns, rows: orderedRows, total },
+  ] }
+}
+
+// ---------------------------------------------------------------- Compare (several teams, or several people)
+const CMP_ALL = [
+  { key: 'closedAmt', label: 'Deals closed', fmt: 'money', line: true, hint: 'final amount' },
+  { key: 'closed', label: 'Deals closed (number)', fmt: 'n', line: true },
+  { key: 'win', label: 'Deal win rate', fmt: 'pct', rate: true },
+  { key: 'pipeline', label: 'Pipeline (planned)', fmt: 'money', hint: 'deals ahead, now' },
+  { key: 'calls', label: 'Calls', fmt: 'n', line: true },
+  { key: 'rate', label: 'Connect rate', fmt: 'pct', line: true, rate: true },
+  { key: 'talk', label: 'Talk time', fmt: 'time', line: true, lineUnit: 'min' },
+  { key: 'unassigned', label: 'Moved to Unassigned', fmt: 'n', lowerBetter: true, admin: true },
 ]
-export const FACTORS = [
-  { value: 'date', label: 'Date' }, { value: 'team', label: 'Team' }, { value: 'advisor', label: 'IS' }, { value: 'product', label: 'Product' },
-  { value: 'status', label: 'Deal outcome / call outcome' }, { value: 'invStatus', label: 'Investor status' }, { value: 'language', label: 'Language' },
-]
-export function facts(measure, p, users) {
-  const s = db(); const C = (id) => s.clientById(id)
-  const base = (uid, cid) => ({ uid, advisor: nameOf(uid), team: teamOf(uid), invStatus: C(cid)?.invStatus || 'Not known', language: langOf(C(cid)) })
-  if (['invested', 'won', 'deals'].includes(measure)) {
-    let list = dealsIn(p, users); if (measure !== 'deals') list = list.filter((d) => d.status === 'Completed')
-    // one fact per product row, so "by product" splits a deal's money across its products
-    return list.flatMap((d) => {
-      const rows = d.rows?.length ? d.rows : [{ product: 'Other', amount: 1 }]; const planned = rows.reduce((t, r) => t + Number(r.amount || 0), 0) || 1
-      return rows.map((r, i) => ({ id: d.id, at: d.start, value: measure === 'invested' ? Math.round((invested(d) * Number(r.amount || 0)) / planned) : i === 0 ? 1 : 0, product: r.product || 'Other', status: d.status, ...base(ownerOf(d), d.clientId) }))
-    })
+const cmp = () => CMP_ALL.filter((m) => !m.admin || isAdmin())
+function numbersOf(p, bs, who) {
+  const now = Date.now(); const c = callsIn(p, who); const conn = c.filter(isConnected); const set = new Set(who)
+  const deals = dealsOf(who); const d = deals.filter((x) => inP(x.start, p))
+  const total = {
+    closedAmt: closedAmount(d), closed: won(d).length, win: pct(won(d).length, decided(d).length),
+    pipeline: plannedAmount(deals.filter((x) => x.status === 'Scheduled' && (x.end || x.start) >= now)), calls: c.length, rate: pct(conn.length, c.length), talk: R.talkTime(c),
+    unassigned: toUnassigned(p).filter((m) => set.has(m.owner)).length,
   }
-  if (['calls', 'connected', 'talk'].includes(measure)) {
-    let list = callsIn(p, users); if (measure !== 'calls') list = list.filter(connected)
-    return list.map((x) => ({ id: x.id, at: x.at, value: measure === 'talk' ? (x.duration || 0) / 60 : 1, product: '—', status: connected(x) ? x.subStatus || 'Connected' : 'Not connected', ...base(x.madeBy, x.clientId) }))
+  const at = (l, b, f = (x) => x.at) => l.filter((x) => inB(b, f(x)))
+  const line = {
+    closedAmt: bs.map((b) => closedAmount(at(d, b, (x) => x.start))), closed: bs.map((b) => won(at(d, b, (x) => x.start)).length),
+    calls: bs.map((b) => at(c, b).length), rate: bs.map((b) => { const l = at(c, b); return l.length ? pct(l.filter(isConnected).length, l.length) : null }), talk: bs.map((b) => Math.round(R.talkTime(at(c, b)) / 60)),
   }
-  const list = (measure === 'wa' ? s.wa : s.emails).filter((m) => m.direction === 'Sent' && inP(m.at, p) && users.includes(m.sentBy))
-  return list.map((m) => ({ id: m.id, at: m.at, value: 1, product: '—', status: m.doc || m.docs?.length ? 'Document' : m.type || 'Message', ...base(m.sentBy, m.clientId) }))
+  return { total, line }
 }
-export function drillFor(measure, ids, label) {
-  const k = MEASURES.find((m) => m.value === measure)?.kind
-  return k === 'deals' ? drillDeals([...new Set(ids)], label) : k === 'calls' ? drillCalls(ids, label) : drillMessages(k, ids, label)
+/** An average of a group: its counts and amounts divided by how many (IS, or teams); rates stay as they are. */
+function averageOf(n, size) {
+  const d = (v) => (v == null ? null : Math.round((v / Math.max(1, size)) * 10) / 10)
+  const total = {}; const line = {}
+  for (const m of cmp()) total[m.key] = m.rate ? n.total[m.key] : d(n.total[m.key])
+  for (const [k, l] of Object.entries(n.line)) line[k] = CMP_ALL.find((m) => m.key === k)?.rate ? l : l.map(d)
+  return { total, line }
 }
-export const OTHERS = 'Others'
-export function groupFacts(list, by, split, grain = 'day', { topX = 0, topS = 0 } = {}) {
-  const keyOf = (f, k) => {
-    if (k !== 'date') return f[k]
-    const d = new Date(f.at); if (grain === 'month') d.setDate(1); if (grain === 'week') d.setDate(d.getDate() - ((d.getDay() + 6) % 7))
-    return dayKey(d.getTime())
-  }
-  const sum = (m, k, v) => m.set(k, (m.get(k) || 0) + v)
-  const xTot = new Map(); const sTot = new Map()
-  for (const f of list) { sum(xTot, keyOf(f, by), f.value); if (split) sum(sTot, String(keyOf(f, split)), f.value) }
-  const keep = (tot, n) => (n && tot.size > n + 1 ? new Set([...tot.entries()].sort((a, b) => b[1] - a[1]).slice(0, n).map(([k]) => k)) : null)
-  const keepX = by === 'date' ? null : keep(xTot, topX); const keepS = split ? keep(sTot, topS) : null
-  const rows = new Map(); const ids = {}; const series = new Set()
-  for (const f of list) {
-    let x = keyOf(f, by); if (keepX && !keepX.has(x)) x = OTHERS
-    let sname = split ? String(keyOf(f, split)) : 'Total'; if (keepS && !keepS.has(sname)) sname = OTHERS
-    series.add(sname)
-    const r = rows.get(x) || { x }; r[sname] = Math.round(((r[sname] || 0) + f.value) * 10) / 10; rows.set(x, r)
-    ;(ids[`${x}|${sname}`] ||= []).push(f.id)
-  }
-  const total = (r) => Object.keys(r).reduce((t, k) => t + (k === 'x' ? 0 : r[k]), 0)
-  const out = [...rows.values()]
-  out.sort((a, b) => (by === 'date' ? String(a.x).localeCompare(String(b.x)) : a.x === OTHERS ? 1 : b.x === OTHERS ? -1 : total(b) - total(a)))
-  const names = [...series].sort((a, b) => (a === OTHERS ? 1 : b === OTHERS ? -1 : (sTot.get(b) || 0) - (sTot.get(a) || 0)))
-  for (const r of out) for (const n of names) r[n] ??= 0
-  return { rows: out, series: names, ids, hiddenX: keepX ? xTot.size - keepX.size : 0, hiddenS: keepS ? sTot.size - keepS.size : 0 }
+function compareSection(p, sel) {
+  const s = db(); const vis = visibleUserIds(); const bs = buckets(p)
+  const isIS = (id) => s.userById(id)?.role === 'IS'
+  const entities = sel.list.map((key) => {
+    if (sel.kind === 'teams') {
+      const who = teamMembers(key).filter((id) => vis.includes(id)); const size = who.filter(isIS).length || who.length
+      const n = numbersOf(p, bs, who)
+      return { key, label: key, sub: `${size} IS`, size, total: n.total, line: n.line }
+    }
+    const u = s.userById(key); if (!u || !vis.includes(key)) return null
+    const n = numbersOf(p, bs, [key])
+    return { key, label: u.name, sub: u.mhf_id, team: teamName(key), size: 1, total: n.total, line: n.line }
+  }).filter(Boolean)
+  // the Money Honey average: for teams the average team, for people the average IS; people also against their team
+  const allIS = s.users.filter((u) => u.role === 'IS' && u.active !== false).map((u) => u.id)
+  const company = numbersOf(p, bs, allIS)
+  const teamCount = uniq(allIS.map(teamName)).filter((t) => t !== 'Management').length || 1
+  const mh = sel.kind === 'teams' ? averageOf(company, teamCount) : averageOf(company, allIS.length)
+  const teamAvg = {}
+  if (sel.kind === 'users') for (const t of uniq(entities.map((e) => e.team))) { const who = teamMembers(t).filter(isIS); teamAvg[t] = averageOf(numbersOf(p, bs, who), who.length).total }
+  return { key: 'compare', kind: 'compare', title: `Comparing ${entities.length} ${sel.kind === 'teams' ? 'teams' : 'people'}`, icon: 'lucide-git-compare', info: DEF.compare,
+    mode: sel.kind, metrics: cmp(), labels: bs.map((b) => b.label), titles: bs.map((b) => b.title || b.label), entities, mh, teamAvg }
+}
+
+// ---------------------------------------------------------------- links from the Prospect DMS dashboard
+/** What a Prospect DMS link may ask for that has no card here (its combined dashboard shows messages, the investors
+ *  held, deals planned and moves to Unassigned): the same drill-down as a card would give. Null when unknown. */
+export function extraDrill(key, f) {
+  return run(() => {
+    const s = db(); const p = R.periodOf(f); const users = scopeUsers(f.scope); const set = new Set(users)
+    const sent = (l) => ids(l.filter((m) => m.direction === 'Sent' && set.has(m.sentBy) && inP(m.at, p)))
+    switch (key) {
+      case 'wa': return R.drill('/whatsapp-logs', 'WhatsApp Logs', sent(s.wa || []), 'WhatsApp sent')
+      case 'email': return R.drill('/email-logs', 'Email Logs', sent(s.emails || []), 'Emails sent')
+      case 'investors': return dClients(ids(bookOf(users)), 'Investors')
+      case 'planned': return dDeals(ids(dealsOf(users).filter((d) => d.status === 'Scheduled' && inP(d.start, p))), 'Deals still planned')
+      case 'lost': return isAdmin() ? dClients(toUnassigned(p).filter((m) => set.has(m.owner)).map((m) => m.clientId), 'Moved to Unassigned') : null
+      default: return null
+    }
+  })
+}
+
+// ---------------------------------------------------------------- the page
+export function buildDashboard(f) { return run(() => build(f)) }
+function build(f) {
+  const p = R.periodOf(f); const prev = R.previousOf(p, f.range)
+  const users = scopeUsers(f.scope)
+  const tl = isSupervisor() || isAdmin()
+  const sections = [overview(p, prev, users), dealsSection(p, users), bookSection(users), calling(p, users)]
+  if (tl) sections.push(team(p, users))
+  if (isAdmin()) sections.push(adminOperations())
+  // two or more teams (or people) chosen: their comparison at the bottom (the page scrolls to it)
+  const sel = parseScope(f.scope)
+  if (sel.list.length > 1 && tl) sections.push(compareSection(p, sel))
+  return { sections, caption: prev.caption, period: p, requests: requests(), insights: highlights(p, prev, users) }
 }

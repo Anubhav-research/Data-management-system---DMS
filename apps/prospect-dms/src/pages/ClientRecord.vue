@@ -107,7 +107,7 @@ watch(() => client.value?.stage, (s) => { route.meta.stage = s })
         <template v-if="failedH && isAdmin()"><Button size="sm" label="Retry" @click="doRetry" /><Button size="sm" theme="red" label="Revert" @click="doRevert" /></template>
         <span v-if="client.callBlocked" class="rounded-4 bg-surface-red-2 px-2 py-1 text-sm text-ink-red-7">Calls blocked: {{ client.callBlocked.reason }}</span>
         <div v-if="owner" class="flex h-7 max-w-80 items-center gap-1.5 rounded-full bg-surface-gray-2 py-0.5 pl-0.5 pr-2.5 text-base" :title="owner.mhf && !owner.mhf.startsWith('was') ? `Assigned to ${owner.name} (${owner.mhf})` : owner.mhf ? `Not assigned (previously ${owner.mhf.slice(4)})` : 'Not assigned'" data-testid="owner-chip">
-          <span class="flex size-6 shrink-0 items-center justify-center rounded-full text-2xs font-semibold" :class="owner.mhf && !owner.mhf.startsWith('was') ? 'bg-surface-gray-7 text-ink-white' : 'bg-surface-gray-4 text-ink-gray-6'">
+          <span class="flex size-6 shrink-0 items-center justify-center rounded-full text-2xs font-semibold" :class="owner.mhf && !owner.mhf.startsWith('was') ? 'bg-surface-gray-7 text-white' : 'bg-surface-gray-4 text-ink-gray-6'">
             <template v-if="owner.mhf && !owner.mhf.startsWith('was')">{{ initials(owner.name) }}</template><span v-else class="lucide-user-x size-3.5" />
           </span>
           <span class="truncate text-ink-gray-8">{{ owner.name }}</span>

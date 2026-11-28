@@ -1,17 +1,18 @@
 <script setup>
 // Prospects / Leads / Investors lists (D02 §4.4, §5.5; X03 PROSPECT, INVESTOR; Fig 8069, 13508).
 // Default sort Rem. Days ascending (PL-007). Supervisor-only columns for TL+ (GEN-006).
+import { earliestPer } from '@mh/core-ui/byId.js'
 import { computed, ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Button, Dropdown, Badge, dialog, toast } from 'frappe-ui'
+import { Button, toast } from 'frappe-ui'
 import { useDb } from '@/stores/db'
 import { useList } from '@/composables/useList'
 import { PRODUCT_INTEREST, INV_STATUS, LANGUAGES } from '@/data/masters'
-import { visibleUserIds, isSupervisor, isAdmin, hasSwitch } from '@/services/access'
+import { visibleUserIds, isSupervisor, isAdmin } from '@/services/access'
 import { clientName, primaryMobile, remDays, cityState, adminAssign, familyExtras } from '@/services/lifecycle'
 import JunkDialog from '@/components/modals/JunkDialog.vue'
 import { myPendingApprovals } from '@/services/approvals'
-import { fmtDateTime, fmtDate, timeAgo, inr, inrShort, fmtMobile, now } from '@/utils/format'
+import { fmtDateTime, fmtDate, timeAgo, inrShort, fmtMobile, now } from '@/utils/format'
 import { investmentSignals, shownInLists, signalMatch, signalQuick, SIGNAL_FIELDS, ADVISORS_FIELD } from '@/services/investorSignals'
 import AumCell from '@/components/cells/AumCell.vue'
 import LastInvestmentCell from '@/components/cells/LastInvestmentCell.vue'
@@ -29,14 +30,15 @@ const db = useDb(); const router = useRouter(); const route = useRoute()
 const short = Object.fromEntries(PRODUCT_INTEREST.map((p) => [p.key, p.short]))
 const title = { Prospect: 'Prospects', Lead: 'Leads', Investor: 'Investors' }[props.stage]
 
-const upcomingEvent = (c) => db.events.filter((e) => e.clientId === c.id && !e.cancelled && e.start > now()).sort((a, b) => a.start - b.start)[0]?.start || null
-const upcomingDeal = (c) => db.deals.filter((d) => d.clientId === c.id && d.status === 'Scheduled').sort((a, b) => a.start - b.start)[0]?.start || null
+// each client's next event / scheduled deal, worked out once per list build (thousands of rows)
+const nextEvents = () => { const t = now(); return earliestPer(db.events, (e) => e.clientId, (e) => e.start, (e) => !e.cancelled && e.start > t) }
+const nextDeals = () => earliestPer(db.deals, (d) => d.clientId, (d) => d.start, (d) => d.status === 'Scheduled')
 const source = () => {
-  const ids = visibleUserIds()
+  const ids = visibleUserIds(); const next = nextEvents(); const deals = nextDeals()
   return db.clients.filter((c) => c.stage === props.stage && shownInLists(c) && (isAdmin() || ids.includes(c.assignedTo))).map((c) => ({
     id: c.id, c, name: clientName(c), mobile: primaryMobile(c), language: c.members[0].language || '-',
     product: (c.members[0].product || []).map((k) => short[k]).join(', '), productKeys: c.members[0].product || [],
-    callStatus: c.callStatus, lastCalled: c.lastCallAt, event: upcomingEvent(c), deal: upcomingDeal(c), rem: remDays(c),
+    callStatus: c.callStatus, lastCalled: c.lastCallAt, event: next.get(c.id) || null, deal: deals.get(c.id) || null, rem: remDays(c),
     assignedTo: c.assignedTo, assignedName: db.userById(c.assignedTo)?.name, city: c.members[0].addresses?.[0]?.city, cityState: cityState(c),
     invStatus: c.invStatus, sourceIs: c.sourceIs, sourceName: db.userById(c.sourceIs)?.name, dataCode: c.dataCode, cid: c.cid,
     ...investmentSignals(c), // same investment signals as Unassigned and Junk (services/investorSignals.js)

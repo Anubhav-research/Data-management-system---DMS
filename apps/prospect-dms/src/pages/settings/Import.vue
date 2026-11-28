@@ -7,6 +7,7 @@
 import { ref, computed } from 'vue'
 import { Button, TextInput } from 'frappe-ui'
 import { useDb } from '@/stores/db'
+import { settingsFilter } from '@/composables/settings'
 import { downloadCsv, IMPORT_HEAD } from '@/services/importFiles'
 import SettingsShell from '@/components/settings/SettingsShell.vue'
 import QuickSelect from '@/components/QuickSelect.vue'
@@ -14,7 +15,9 @@ import ImportDialog from '@/components/modals/ImportDialog.vue'
 
 const db = useDb()
 const q = ref(''); const status = ref(undefined); const src = ref(undefined)
-const rows = computed(() => db.imports.filter((i) => (!q.value || `${i.file} ${i.source}`.toLowerCase().includes(q.value.toLowerCase())) && (!status.value || i.status === status.value) && (!src.value || i.source === src.value)))
+// opened from the Dashboard: only the files behind the number clicked, until the filter is removed
+const rows = computed(() => db.imports.filter((i) => (!settingsFilter.value || settingsFilter.value.ids.includes(i.id)) && (!q.value || `${i.file} ${i.source}`.toLowerCase().includes(q.value.toLowerCase())) && (!status.value || i.status === status.value) && (!src.value || i.source === src.value)))
+const clearDrill = () => { settingsFilter.value = null }
 const filtered = computed(() => !!(q.value || status.value || src.value))
 function clearFilters() { q.value = ''; status.value = undefined; src.value = undefined }
 const sources = computed(() => [...new Set(db.imports.map((i) => i.source))])
@@ -37,6 +40,11 @@ function skippedCsv(i) {
   <SettingsShell title="Import History" description="Files imported into the Pool and what happened to their rows.">
     <template #actions><Button variant="solid" icon-left="lucide-upload" label="Import New File" @click="uploadOpen = true" /></template>
 
+    <div v-if="settingsFilter" class="mb-2 flex items-center gap-2 rounded-4 bg-surface-blue-1 px-3 py-1.5 text-sm text-ink-blue-7" data-testid="silent-filter">
+      <span class="lucide-layout-dashboard size-3.5 shrink-0" />
+      <span class="min-w-0 truncate">From Dashboard: <b class="font-medium">{{ settingsFilter.from }}</b> · {{ rows.length }} record{{ rows.length === 1 ? "" : "s" }}</span>
+      <button class="ml-auto shrink-0 font-medium underline" @click="clearDrill">Remove filter</button>
+    </div>
     <!-- toolbar -->
     <div class="mb-2 flex flex-wrap items-center gap-2">
       <div class="w-full sm:w-60"><TextInput v-model="q" placeholder="Search file or source"><template #prefix><span class="lucide-search size-4 text-ink-gray-5" /></template></TextInput></div>

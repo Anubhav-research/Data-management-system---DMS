@@ -10,10 +10,21 @@ export const isIS = () => role() === 'IS'
 export const isSupervisor = () => ['TL', 'VP', 'President', 'Admin'].includes(role())
 
 /** All users below `userId` in the reports-to tree (downline). */
+// people grouped by who they report to, built once per run (with 200+ people the old walk re-read the whole user
+// list for every person in the tree, on every check); same answer, same order
+let reportsCache = null
+function reportsTo() {
+  if (!reportsCache) {
+    reportsCache = new Map()
+    for (const u of useDb().users) (reportsCache.get(u.reportsTo) || reportsCache.set(u.reportsTo, []).get(u.reportsTo)).push(u.id)
+    queueMicrotask(() => { reportsCache = null })
+  }
+  return reportsCache
+}
 export function downline(userId) {
-  const db = useDb()
+  const by = reportsTo()
   const out = []
-  const walk = (id) => db.users.filter((u) => u.reportsTo === id).forEach((u) => { out.push(u.id); walk(u.id) })
+  const walk = (id) => (by.get(id) || []).forEach((u) => { out.push(u); walk(u) })
   walk(userId)
   return out
 }
@@ -90,6 +101,8 @@ export function canAccessPath(path) {
     return !!page && (!page.admin || u.role === 'Admin')
   }
   if (path.startsWith('/unassigned-family') || path.startsWith('/junk')) return u.role === 'Admin'
+  if (path.startsWith('/dashboard-lab')) return u.role === 'Admin' // design review page
+  if (path.startsWith('/exceptions')) return u.role === 'Admin' // Dashboard drill-down, Admin operations
   return true
 }
 

@@ -1,6 +1,6 @@
-// bridge: the ONLY door between Prospect DMS and Investor DMS. Five flows, nothing more:
+// bridge: the ONLY door between Prospect DMS and Investor DMS. Six flows, nothing more:
 //   F1 Investor handover (P -> I), F1-ack (I -> P), F2 Family log (I -> P), F3 Number check (P asks; I and tp-sim answer),
-//   F4 Busy blocks (both ways).
+//   F4 Busy blocks (both ways), F5 Investor figures (P asks, I answers: dashboard counts and amounts per employee ID).
 // Every message: own Admin switch, content stripped to the allowed fields (and the stripping logged), append-only
 // audit log with a SHA-256 hash of the content and a hash chain so an edited line is detectable.
 import path from 'node:path'
@@ -19,6 +19,7 @@ fs.mkdirSync(DATA, { recursive: true })
 
 const FLOWS = {
   F1: 'F1 Investor handover', F1_ACK: 'F1-ack Handover acknowledgement', F2: 'F2 Family log', F3: 'F3 Number check', F4: 'F4 Busy blocks',
+  F5: 'F5 Investor figures',
 }
 const onOff = (v) => String(v || 'on').toLowerCase() !== 'off'
 function freshState() {
@@ -27,6 +28,8 @@ function freshState() {
   return { switches, handovers: {}, busy: { prospect: [], investor: [] }, famSeq: 0, auditSeq: 0, lastChain: '' }
 }
 let S = readJson(STATE, null) || freshState()
+// a flow added later (F5) starts from .env on a bridge that already has a saved state
+for (const k of Object.keys(FLOWS)) S.switches[k] ||= { on: onOff(env['FLOW_' + k]), status: 'Pending compliance sign-off', changedAt: null, changedBy: null }
 let famLog = readJsonl(FAMLOG)
 const save = () => writeJson(STATE, S)
 save()
@@ -90,6 +93,11 @@ function stripHandover(body) {
 const FAM_FIELDS = ['familyId', 'advisorMhfId', 'status', 'investedLast18Months', 'updatedAt']
 const BUSY_FIELDS = ['userMhfId', 'start', 'end', 'allDay']
 const ACK_FIELDS = ['status', 'reasonCode', 'at']
+// F5: number fields only (the same lists as services/i-api/figures.mjs)
+const F5_SERIES = ['calls', 'conn', 'talk', 'won', 'wonAmt', 'decided', 'rej', 'exp', 'sched', 'wa', 'email', 'lost']
+const F5_NOW = ['investors', 'active', 'inactive', 'prospect', 'pipelineAmt', 'pipelineN', 'wk', 'nextWk', 'in30', 'later', 'wkAmt', 'nextWkAmt', 'in30Amt', 'laterAmt',
+  'dealsToday', 'dealsToUpdate', 'fuToday', 'fuOverdue', 'runningOut', 'nearUnassigned', 'soonInactive', 'notCalled60', 'missed', 'tasksDue']
+const F5_OUTCOME = /^[A-Za-z][\w ()/&'-]{0,39}$/ // a call outcome name from the Investor DMS list (e.g. "Not Interested")
 
 // ---------------- routes ----------------
 const P = ['P'], I = ['I'], BOTH = ['P', 'I']
@@ -190,6 +198,43 @@ const routes = [
     const yes = answers.filter((a) => a.exists === 'Yes').length
     audit({ flow: 'F3', direction: 'Prospect DMS ⇄ Investor DMS + tp-sim', route: 'POST /number-check', caller: 'Prospect DMS', actor: actorOf(req), hash: sha256(answers), result: `answered ${items.length} (${yes} Yes)`, count: items.length })
     send(res, 200, { answers })
+  }),
+
+  // ---- F5 Investor figures (product owner, 27 Nov 2026) ----
+  // Prospect DMS shows an "Investor DMS" part on its dashboard. It asks for the people in its reader's view (employee
+  // IDs) and the period's days; Investor DMS answers numbers per person. The bridge passes on only the allowed number
+  // fields, and "lost" (moved to Unassigned) only when the reader is Admin.
+  route('POST', /^\/investor-figures$/, P, 'F5', async (req, res) => {
+    const body = await readBody(req)
+    const users = [...new Set((body.users || []).map(String).filter((x) => /^[\w-]{1,20}$/.test(x)))].slice(0, 1000)
+    const edges = (body.edges || []).map(Number).filter(Number.isFinite).slice(0, 400)
+    const num = (o) => ({ from: Number(o?.from) || 0, to: Number(o?.to) || 0 })
+    if (edges.length < 2) return send(res, 400, { error: 'edges: at least two times are needed' })
+    let a
+    try {
+      const r = await fetch(`http://127.0.0.1:${env.I_API_PORT}/figures`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': env.BRIDGE_LOOKUP_KEY }, body: JSON.stringify({ users, edges, prev: num(body.prev), today: num(body.today), all: !!body.all }), signal: AbortSignal.timeout(8000) })
+      if (!r.ok) throw new Error(`i-api answered ${r.status}`)
+      a = await r.json()
+    } catch {
+      audit({ flow: 'F5', direction: 'Prospect DMS ⇄ Investor DMS', route: 'POST /investor-figures', caller: 'Prospect DMS', actor: actorOf(req), hash: null, result: 'failed: Investor DMS is unreachable', count: users.length })
+      return send(res, 502, { error: 'Investor DMS figures are not available right now.' })
+    }
+    const stripped = []; const admin = isAdmin(req)
+    const series = F5_SERIES.filter((k) => admin || k !== 'lost')
+    const nums = (o, keys, where) => { const out = pick(o, keys, where, stripped); for (const k of Object.keys(out)) out[k] = Array.isArray(out[k]) ? out[k].map((v) => Number(v) || 0) : Number(out[k]) || 0; return out }
+    const outcomes = (o, where) => Object.fromEntries(Object.entries(o || {}).filter(([k, v]) => { const ok = F5_OUTCOME.test(k) && Number.isFinite(Number(v)); if (!ok) stripped.push(where + k); return ok }).slice(0, 30).map(([k, v]) => [k, Number(v)]))
+    const figures = (x, who, withNow = true) => ({ series: nums(x.series, series, `${who}.series.`), prev: nums(x.prev, series, `${who}.prev.`), ...(withNow ? { now: nums(x.now, F5_NOW, `${who}.now.`) } : {}),
+      week: nums(x.week, ['calls', 'conn'], `${who}.week.`), outcomes: outcomes(x.outcomes, `${who}.outcomes.`) })
+    const people = {}
+    for (const [mhf, x] of Object.entries(a.people || {})) {
+      if (!users.includes(mhf)) { stripped.push(`people.${mhf}`); continue }
+      people[mhf] = figures(x, mhf)
+    }
+    const out = { asOf: Number(a.asOf) || Date.now(), people }
+    // the company's total over every active IS (only for the "Money Honey average" of the comparison): no person in it
+    if (body.all && a.all) out.all = { ...figures(a.all, 'all', false), n: Number(a.all.n) || 0 }
+    audit({ flow: 'F5', direction: 'Investor DMS → bridge → Prospect DMS', route: 'POST /investor-figures', caller: 'Prospect DMS', actor: actorOf(req), hash: sha256(out), result: `answered ${Object.keys(people).length} of ${users.length} people`, count: users.length, stripped: stripped.length ? stripped.slice(0, 20) : undefined })
+    send(res, 200, out)
   }),
 
   // ---- F4 Busy blocks ----

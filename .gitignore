@@ -35,6 +35,7 @@ playwright-report/
 # Internal project documents (kept outside the public repository)
 docs/
 PROMPT.md
+PROMPT_*.md
 
 # Logs
 *.log

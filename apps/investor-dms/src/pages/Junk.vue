@@ -10,6 +10,7 @@ import { clientName, primaryMobile, cityState, restoreFromJunk } from '@/service
 import { investmentSignals, shownInLists, signalMatch, signalQuick, SIGNAL_FIELDS, ADVISORS_FIELD } from '@/services/investorSignals'
 import { fmtDate, inr, inrShort, DAY } from '@/utils/format'
 import PageHeader from '@/components/PageHeader.vue'
+import SilentFilterBar from '@/components/SilentFilterBar.vue'
 import ListToolbar from '@/components/ListToolbar.vue'
 import DataTable from '@/components/DataTable.vue'
 import UserChip from '@/components/UserChip.vue'
@@ -27,7 +28,7 @@ const source = () => db.clients.filter((c) => c.stage === 'Junk' && shownInLists
   advisorId: c.sourceIs, advisorName: db.userById(c.sourceIs)?.name || null, prevDataCode: c.prevDataCode || null,
   movedOn: c.movedOn, movedBy: c.movedBy, reason: c.junkComment || null,
 }))
-const { search, quickValues, advanced, sort, rows, loading, refresh } = useList(source, {
+const { search, quickValues, advanced, sort, rows, loading, refresh, silentIds, clearSilent } = useList(source, {
   searchKeys: ['cid', 'name', 'mobile'],
   defaultSort: { key: 'movedOn', dir: 'desc' },
   quickMatch: { ...signalMatch, movedOn: (r, v) => r.movedOn && Date.now() - r.movedOn <= Number(v) * DAY },
@@ -61,6 +62,7 @@ const bulkMenu = computed(() => [
 <template>
   <div class="flex h-full flex-col">
     <PageHeader :crumbs="[{ label: 'Junk', to: '/junk' }, { label: 'List', chevron: true }]" />
+    <SilentFilterBar v-if="silentIds" :count="rows.length" @clear="clearSilent" />
     <ListToolbar v-model:search="search" v-model:quick-values="quickValues" v-model:advanced="advanced" v-model:sort="sort"
       placeholder="Client ID / Name / Mobile" :quick="quick" :filter-fields="fields" :sort-fields="fields" @refresh="refresh" />
     <DataTable :bulk-options="bulkMenu" v-model:selection="selection" :columns="columns" :rows="rows" :loading="loading" selectable

@@ -1,36 +1,114 @@
 {
-  "contractVersion": "1.0.0",
+  "contractVersion": "1.1.0",
   "title": "F1 Investor handover - Prospect DMS to Investor DMS",
   "status": "Pending compliance sign-off",
-  "changedOn": "2026-11-12",
+  "changedOn": "2026-11-24",
   "note": "Compliance can change this list without code changes. The bridge strips every field that is not listed here and logs that it did.",
   "meta": [
-    "handoverId", "idempotencyKey", "contractVersion", "createdAt", "familyId",
-    "convertingAdvisorMhfId", "convertingAdvisorName", "actedByMhfId", "convertedFromStage"
+    "handoverId",
+    "idempotencyKey",
+    "contractVersion",
+    "createdAt",
+    "familyId",
+    "convertingAdvisorMhfId",
+    "convertingAdvisorName",
+    "actedByMhfId",
+    "convertedFromStage",
+    "sourceName"
   ],
-  "group": ["investorPrimary", "members"],
+  "group": [
+    "investorPrimary",
+    "members"
+  ],
   "person": [
-    "personRef", "firstName", "middleName", "lastName", "gender", "dateOfBirth", "language", "nationality",
-    "relationship", "pan", "cid", "platformFamilyId", "mobiles", "emails", "addresses", "productInterest"
+    "personRef",
+    "firstName",
+    "middleName",
+    "lastName",
+    "gender",
+    "dateOfBirth",
+    "language",
+    "nationality",
+    "relationship",
+    "pan",
+    "cid",
+    "platformFamilyId",
+    "mobiles",
+    "emails",
+    "addresses",
+    "productInterest"
   ],
   "personLists": {
-    "mobiles": ["type", "mobile", "isWhatsapp"],
-    "emails": ["email"],
-    "addresses": ["type", "address", "city", "pin", "state", "country"]
+    "mobiles": [
+      "type",
+      "mobile",
+      "isWhatsapp"
+    ],
+    "emails": [
+      "email"
+    ],
+    "addresses": [
+      "type",
+      "address",
+      "city",
+      "pin",
+      "state",
+      "country"
+    ]
   },
   "neverSent": [
-    "Pool Source", "Import Date", "Call logs", "Call comments", "Recordings", "Notes", "Events", "Tasks",
-    "WhatsApp messages", "Email messages", "Documents", "Activity", "Approvals", "Junk and release counters",
-    "Timers", "The other 33 Data-tab sections", "Any member who is not verified on the Transaction Platform"
+    "Import Date",
+    "Call logs",
+    "Call comments",
+    "Recordings",
+    "Notes",
+    "Events",
+    "Tasks",
+    "WhatsApp messages",
+    "Email messages",
+    "Documents",
+    "Activity",
+    "Approvals",
+    "Junk and release counters",
+    "Timers",
+    "The other 33 Data-tab sections",
+    "Any member who is not verified on the Transaction Platform"
   ],
   "labels": {
-    "handoverId": "Handover ID", "idempotencyKey": "Idempotency key", "contractVersion": "Contract version", "createdAt": "Created at (IST)",
-    "familyId": "Family ID", "convertingAdvisorMhfId": "Converting advisor MHF ID", "convertingAdvisorName": "Converting advisor name",
-    "actedByMhfId": "Acted by (senior or Admin) MHF ID", "convertedFromStage": "Converted from stage",
-    "investorPrimary": "Investor primary", "members": "Verified members",
-    "personRef": "Person reference (handover-local)", "firstName": "First name", "middleName": "Middle name", "lastName": "Last name",
-    "gender": "Gender", "dateOfBirth": "Date of birth", "language": "Language", "nationality": "Nationality",
-    "relationship": "Relationship to the investor primary", "pan": "PAN", "cid": "CID", "platformFamilyId": "Platform family ID",
-    "mobiles": "Mobiles (type, Is WhatsApp)", "emails": "Emails", "addresses": "Addresses", "productInterest": "Product interest"
-  }
+    "handoverId": "Handover ID",
+    "idempotencyKey": "Idempotency key",
+    "contractVersion": "Contract version",
+    "createdAt": "Created at (IST)",
+    "familyId": "Family ID",
+    "convertingAdvisorMhfId": "Converting advisor MHF ID",
+    "convertingAdvisorName": "Converting advisor name",
+    "actedByMhfId": "Acted by (senior or Admin) MHF ID",
+    "convertedFromStage": "Converted from stage",
+    "investorPrimary": "Investor primary",
+    "members": "Verified members",
+    "personRef": "Person reference (handover-local)",
+    "firstName": "First name",
+    "middleName": "Middle name",
+    "lastName": "Last name",
+    "gender": "Gender",
+    "dateOfBirth": "Date of birth",
+    "language": "Language",
+    "nationality": "Nationality",
+    "relationship": "Relationship to the investor primary",
+    "pan": "PAN",
+    "cid": "CID",
+    "platformFamilyId": "Platform family ID",
+    "mobiles": "Mobiles (type, Is WhatsApp)",
+    "emails": "Emails",
+    "addresses": "Addresses",
+    "productInterest": "Product interest",
+    "sourceName": "Source name (where the record came from in Prospect DMS)"
+  },
+  "changes": [
+    {
+      "version": "1.1.0",
+      "on": "2026-11-24",
+      "change": "Source name added to F1 handover, approved by product owner, 24 Nov 2026"
+    }
+  ]
 }

@@ -2,6 +2,11 @@
 // loaded on start and saved back with a version number (packages/core-ui/src/sync.js), so several people on the
 // LAN see the same data. Business rules live in src/services, not here.
 import { defineStore } from 'pinia'
+import { byIdLookup } from '@mh/core-ui/byId.js'
+
+// id -> record, without walking the whole list each time (the big lists hold thousands of records)
+const userLookup = byIdLookup()
+const clientLookup = byIdLookup()
 import { seedUsers, seedClients, seedRelated, seedPoolSources, seedImports, seedTransfers, seedApprovals, seedNotifications } from '@/data/seed'
 import { now } from '@/utils/format'
 import { EMAIL_TEMPLATES } from '@/data/masters'
@@ -59,8 +64,8 @@ export const useDb = defineStore('db', {
   },
   getters: {
     me: (s) => s.users.find((u) => u.id === s.sessionUserId) || null,
-    userById: (s) => (id) => s.users.find((u) => u.id === id),
-    clientById: (s) => (id) => s.clients.find((c) => c.id === id),
+    userById: (s) => (id) => userLookup(s.users, id),
+    clientById: (s) => (id) => clientLookup(s.clients, id),
   },
   actions: {
     nextId(prefix) { this.seq++; return `${prefix}-${this.seq}` },

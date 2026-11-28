@@ -27,6 +27,10 @@ export default defineConfig({
     },
   },
   // DECISION-13 (default, confirm): what happens to an investor's personal data here after acceptance (remove | hide)
-  define: { __INVESTOR_DATA_IN_PDMS__: JSON.stringify(env.INVESTOR_DATA_IN_PDMS === 'hide' ? 'hide' : 'remove') },
+  define: {
+    __INVESTOR_DATA_IN_PDMS__: JSON.stringify(env.INVESTOR_DATA_IN_PDMS === 'hide' ? 'hide' : 'remove'),
+    // the dashboard's Investor DMS links open the other website (services/investorFigures.js)
+    __DMS_PORTS__: JSON.stringify({ p: String(env.PDMS_PORT), i: String(env.IDMS_PORT) }),
+  },
   preview: { port: 4175 },
 })

@@ -6,6 +6,7 @@ import { useRoute } from 'vue-router'
 import { Button } from 'frappe-ui'
 import { useDb } from '@/stores/db'
 import { useList } from '@/composables/useList'
+import { visibleUserIds } from '@/services/access'
 import { TASK_PRIORITIES } from '@/data/masters'
 import { fmtDateTime, timeAgo, DAY } from '@/utils/format'
 import PageHeader from '@/components/PageHeader.vue'
@@ -18,8 +19,10 @@ import TaskModal from '@/components/modals/TaskModal.vue'
 const db = useDb(); const route = useRoute()
 const source = () => {
   const me = db.sessionUserId
+  // opened from the Dashboard or a notification (?ids=): a team leader also sees the tasks of the people below them
+  const team = route.query.ids ? visibleUserIds() : null
   return db.tasks
-    .filter((t) => t.createdBy === me || t.assignedTo === me)
+    .filter((t) => t.createdBy === me || t.assignedTo === me || (team && team.includes(t.assignedTo)))
     .map((t) => ({ id: t.id, t, title: t.title, status: t.status, priority: t.priority, due: t.due, assignedTo: t.assignedTo, createdBy: t.createdBy, assignedName: db.userById(t.assignedTo)?.name, createdByName: db.userById(t.createdBy)?.name, updatedAt: t.updatedAt, createdAt: t.createdAt }))
 }
 const endOfToday = () => { const d = new Date(); d.setHours(23, 59, 59, 999); return d.getTime() }

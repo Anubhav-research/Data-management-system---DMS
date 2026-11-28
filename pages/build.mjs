@@ -3,13 +3,14 @@
 //   pages-dist/prospect/         Prospect DMS (normal build, relative paths)
 //   pages-dist/investor/         Investor DMS
 //   pages-dist/sw.js             the five services, running in the visitor's browser (pages/sw.js)
-//   pages-dist/demo-data.json    starting data: a copy of this PC's current demo data (services/*/data)
+//   pages-dist/demo-data.json.gz starting data, gzipped: a copy of this PC's current demo data (services/*/data)
 //   pages-dist/demo-version.txt  changes when the demo data changes (visitors then get the new data)
 // Publish the folder as it is (it holds no secret: the demo keys are the public placeholders from .env.example).
 import { build } from 'vite'
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
+import zlib from 'node:zlib'
 import { ROOT } from '../services/lib/common.mjs'
 
 const OUT = path.join(ROOT, 'pages-dist')
@@ -77,7 +78,8 @@ for (const s of ['p-api', 'i-api', 'tp-sim', 'bridge', 'content']) {
 }
 const body = JSON.stringify({ files })
 const version = crypto.createHash('sha256').update(body).digest('hex').slice(0, 16)
-fs.writeFileSync(path.join(OUT, 'demo-data.json'), JSON.stringify({ version, files }))
+// gzipped: the full demo data is over 100 MB as JSON (GitHub's file limit) and about 12 MB compressed; sw.js unzips it
+fs.writeFileSync(path.join(OUT, 'demo-data.json.gz'), zlib.gzipSync(JSON.stringify({ version, files }), { level: 9 }))
 fs.writeFileSync(path.join(OUT, 'demo-version.txt'), version)
 fs.copyFileSync(path.join(ROOT, 'pages', 'index.html'), path.join(OUT, 'index.html'))
 fs.writeFileSync(path.join(OUT, '.nojekyll'), '')

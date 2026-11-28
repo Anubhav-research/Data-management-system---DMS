@@ -1,0 +1,48 @@
+/* Dashboard design tokens, shared by both websites (design review, 27 Nov 2026).
+   Colour has one job each, validated with the data-viz palette checks (light and dark, colour-blind pairs):
+   - website identity: Prospect DMS blue, Investor DMS aqua (all-pairs ΔE 21+, both >= 3:1 on the surface);
+   - the "part / rest" of one measure (connected / not connected): two steps of the accent ramp;
+   - channels: WhatsApp violet, email orange;
+   - categories (outcomes, products, teams): eight hues in a fixed order, never cycled;
+   - status (good / warning / critical): reserved, always with an icon or a label;
+   - magnitude (heatmap): one hue, light to dark.
+   The accent follows the website: blue in Prospect DMS, aqua in Investor DMS (data-accent on the page root). */
+.dash-root {
+  --viz-p: #2a78d6; --viz-p-2: #86b6ef; --viz-p-soft: #cde2fb; --viz-p-wash: #eef5fd;
+  --viz-i: #13a170; --viz-i-2: #7fd3b0; --viz-i-soft: #c8eedd; --viz-i-wash: #ecf8f2;
+  --viz-wa: #6250d6; --viz-em: #eb6834;
+  --viz-1: #2a78d6; --viz-2: #eb6834; --viz-3: #1baf7a; --viz-4: #eda100; --viz-5: #e87ba4; --viz-6: #008300; --viz-7: #6250d6; --viz-8: #e34948;
+  --viz-good: #0ca30c; --viz-warn: #e59a00; --viz-crit: #d03b3b; --viz-warn-wash: #fff6e0; --viz-crit-wash: #fdecec;
+  --viz-grid: #ebeae5; --viz-axis: #d4d3cc; --viz-muted: #898781;
+  --viz-heat-0: #eef5fd; --viz-heat-1: #cde2fb; --viz-heat-2: #9ec5f4; --viz-heat-3: #5598e7; --viz-heat-4: #2a78d6; --viz-heat-5: #184f95;
+  --card-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.04);
+  --card-shadow-hover: 0 4px 12px rgba(16, 24, 40, 0.08);
+  --viz-accent: var(--viz-p); --viz-accent-2: var(--viz-p-2); --viz-accent-soft: var(--viz-p-soft); --viz-accent-wash: var(--viz-p-wash);
+}
+.dash-root[data-accent='i'] { --viz-accent: var(--viz-i); --viz-accent-2: var(--viz-i-2); --viz-accent-soft: var(--viz-i-soft); --viz-accent-wash: var(--viz-i-wash);
+  --viz-heat-0: #ecf8f2; --viz-heat-1: #c8eedd; --viz-heat-2: #8fdbbb; --viz-heat-3: #3fbf8b; --viz-heat-4: #13a170; --viz-heat-5: #0b6b4a; }
+[data-theme='dark'] .dash-root {
+  --viz-p: #3987e5; --viz-p-2: #256abf; --viz-p-soft: #1c3a5f; --viz-p-wash: #16222f;
+  --viz-i: #199e70; --viz-i-2: #147a57; --viz-i-soft: #15392b; --viz-i-wash: #132420;
+  --viz-wa: #9085e9; --viz-em: #d95926;
+  --viz-1: #3987e5; --viz-2: #d95926; --viz-3: #199e70; --viz-4: #c98500; --viz-5: #d55181; --viz-6: #008300; --viz-7: #9085e9; --viz-8: #e66767;
+  --viz-warn: #fab219; --viz-warn-wash: #2e2512; --viz-crit-wash: #301a1a;
+  --viz-grid: #2c2c2a; --viz-axis: #383835;
+  --viz-heat-0: #16222f; --viz-heat-1: #1c3a5f; --viz-heat-2: #184f95; --viz-heat-3: #256abf; --viz-heat-4: #3987e5; --viz-heat-5: #86b6ef;
+  --card-shadow: none; --card-shadow-hover: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+[data-theme='dark'] .dash-root[data-accent='i'] { --viz-heat-0: #132420; --viz-heat-1: #15392b; --viz-heat-2: #147a57; --viz-heat-3: #199e70; --viz-heat-4: #3fbf8b; --viz-heat-5: #8fdbbb; }
+
+/* cards */
+.dash-card { border-radius: 14px; box-shadow: var(--card-shadow); transition: box-shadow 0.2s ease; }
+.dash-card:hover { box-shadow: var(--card-shadow-hover); }
+/* sections come in gently, once */
+@media (prefers-reduced-motion: no-preference) {
+  .dash-enter { animation: dash-enter 0.35s ease both; }
+  @keyframes dash-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+}
+[data-spin] { animation: dash-spin 1s linear infinite; }
+@keyframes dash-spin { to { transform: rotate(360deg); } }
+/* the day still running: light stripes over its colour */
+.dash-stripes { background-image: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.4) 0 3px, transparent 3px 7px); }
+.dash-num { font-feature-settings: 'tnum' 0; letter-spacing: -0.02em; }

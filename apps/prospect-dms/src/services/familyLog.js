@@ -11,32 +11,57 @@ import { raiseException, isFamilyStage } from './family'
 const db = () => useDb()
 const state = () => { const s = db(); if (!s.familyLog) s.familyLog = { cursor: 0, applied: [], corrections: [] }; return s.familyLog }
 
+// A pull can bring thousands of entries at once (the daily snapshot names every family). While they are applied, the
+// families are looked up in an index built once, and the log lines and the cursor are written once at the end;
+// one entry at a time, each lookup read every record and each write saved the whole log again (the page froze).
+let bulk = null
+function familyIndex() {
+  const families = new Map(); const junked = new Map()
+  for (const c of db().clients) {
+    if (!c.familyId) continue
+    if (isFamilyStage(c)) { if (!families.has(c.familyId)) families.set(c.familyId, c) } else if (c.stage === 'Junk' && c.movedFrom === 'Investor Family' && !junked.has(c.familyId)) junked.set(c.familyId, c)
+  }
+  return { families, junked }
+}
+// (applying an entry only moves a family between the two family stages, so the index stays right for the whole pull)
+const familyOf = (id) => (bulk ? bulk.families.get(id) : db().clients.find((x) => x.familyId === id && isFamilyStage(x))) || null
+const junkedFamilyOf = (id) => (bulk ? bulk.junked.get(id) : db().clients.find((x) => x.familyId === id && x.stage === 'Junk' && x.movedFrom === 'Investor Family')) || null
+
 /** Pull new F2 entries from the bridge and apply them in order. */
 export async function pullFamilyLog() {
   if (!flowOn('F2')) return { off: true }
   const r = await bridge('GET', `/family-log?since=${state().cursor || 0}`)
   if (!r.ok) return { error: r.data?.error || r.status }
-  let n = 0
-  for (const e of r.data.items.sort((a, b) => a.seq - b.seq)) {
-    if (e.seq <= (state().cursor || 0)) continue // another tab already applied it
-    applyFamilyEntry(e, 'Family log from Investor DMS')
-    state().cursor = e.seq; n++
+  const items = r.data.items.filter((e) => e.seq > (state().cursor || 0)).sort((a, b) => a.seq - b.seq) // another tab may have applied some
+  if (!items.length) return { applied: 0 }
+  bulk = { ...familyIndex(), applied: [], corrections: [] }
+  let last = null
+  try {
+    for (const e of items) { applyFamilyEntry(e, 'Family log from Investor DMS'); last = e.seq }
+  } finally {
+    const b = bulk; bulk = null; const L = state()
+    if (b.applied.length) L.applied = [...b.applied.reverse(), ...L.applied].slice(0, 1000)
+    if (b.corrections.length) L.corrections = [...b.corrections.reverse(), ...L.corrections]
+    if (last != null) L.cursor = last
   }
-  return { applied: n }
+  return { applied: items.length }
 }
 
 function logEntry(e, action, result, source) {
+  const line = { seq: e.seq ?? null, receivedAt: now(), mode: e.mode || 'manual', snapshotId: e.snapshotId || null, familyId: e.familyId, status: e.status, advisorMhfId: e.advisorMhfId || null, investedLast18Months: e.investedLast18Months ?? null, action, result, source }
+  const correction = e.mode === 'snapshot' && action !== 'none' && action !== 'ignored' ? { at: now(), familyId: e.familyId, snapshotId: e.snapshotId, action, result } : null
+  if (bulk) { bulk.applied.push(line); if (correction) bulk.corrections.push(correction); return }
   const L = state()
-  L.applied.unshift({ seq: e.seq ?? null, receivedAt: now(), mode: e.mode || 'manual', snapshotId: e.snapshotId || null, familyId: e.familyId, status: e.status, advisorMhfId: e.advisorMhfId || null, investedLast18Months: e.investedLast18Months ?? null, action, result, source })
+  L.applied.unshift(line)
   if (L.applied.length > 1000) L.applied.length = 1000
-  if (e.mode === 'snapshot' && action !== 'none' && action !== 'ignored') L.corrections.unshift({ at: now(), familyId: e.familyId, snapshotId: e.snapshotId, action, result })
+  if (correction) L.corrections.unshift(correction)
 }
 
 /** Apply one F2 message (or a manual fallback change). Returns the action taken. */
 export function applyFamilyEntry(e, source = 'Family log from Investor DMS') {
-  const c = db().clients.find((x) => x.familyId === e.familyId && isFamilyStage(x))
+  const c = familyOf(e.familyId)
   // a family Admin moved to Junk: only remember who its advisor is now (it is restored to them)
-  const junked = !c && db().clients.find((x) => x.familyId === e.familyId && x.stage === 'Junk' && x.movedFrom === 'Investor Family')
+  const junked = !c && junkedFamilyOf(e.familyId)
   if (junked) {
     const u = e.status === 'Assigned' ? db().users.find((x) => x.mhf_id === e.advisorMhfId) : null
     if (u && junked.familyAdvisor !== u.id) { junked.familyAdvisor = u.id; logEntry(e, 'family IS updated (in Junk)', 'applied', source); return 'family IS updated (in Junk)' }

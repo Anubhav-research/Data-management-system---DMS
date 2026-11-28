@@ -54,6 +54,8 @@ export const WINDOW_OUTCOMES = { Investor: ['Followup', 'Passive Communication',
 export const CONVERT_OPTIONS = {}
 
 export const INV_STATUS = ['Prospect', 'Active', 'Inactive']
+/** Dashboard AUM bands (docs/DASHBOARD_SPEC.md §4): [label, from, to) in rupees. */
+export const AUM_BANDS = [['Below ₹1 L', 0, 1e5], ['₹1–5 L', 1e5, 5e5], ['₹5–25 L', 5e5, 25e5], ['₹25 L and above', 25e5, Infinity]]
 
 // X02 / D03 §12
 export const GENDERS = ['Female', 'Male', 'Transgender', 'Others']

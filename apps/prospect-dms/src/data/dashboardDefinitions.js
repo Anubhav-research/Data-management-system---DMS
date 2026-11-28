@@ -1,0 +1,25 @@
+// Prospect DMS dashboard: the (i) text of every card, in one place (version 6, 27 Nov 2026: both websites together).
+// Kept short and plain on purpose (product owner): what the card is for, in one line.
+export const DEF = {
+  trend: 'How this number moved over the period, in both websites (Prospect DMS blue, Investor DMS green). Click a bar to open that day\'s records.',
+  today: 'What needs your attention today, in both websites. Click a row: when both have some, choose Prospect DMS or Investor DMS.',
+  journey: 'This period, step by step: records called while in the Pool and taken from it, people converted to Investor (Prospect DMS), then deals planned and closed (Investor DMS, by meeting date).',
+  dealOutcomes: 'Deals whose meeting fell in this period, by how they ended (Investor DMS). Closed = marked Completed, with its final amount.',
+  pipelineAhead: 'Scheduled deals still ahead, by when the meeting is (Investor DMS). Planned, not certain until the investor invests.',
+  lost: 'Records that left the pipeline in this period, and why. Admin also sees investors moved to Unassigned in Investor DMS.',
+  held: 'What the people in view hold now: Prospects, Leads and Investor Family here, investors in Investor DMS.',
+  invStatus: 'The investors held now, by status (Investor DMS).',
+  attention: 'Clients whose clock is running: Prospects and Leads about to go back to the Pool, investors about to turn Inactive or not called for long.',
+  interest: 'What the Prospects and Leads held now are interested in.',
+  heat: 'Every weekday and hour of the period, in both websites: the darker the cell, the more calls were picked up. Grey cells had too few calls to judge. A cell opens its calls (Investor DMS: the period).',
+  gauge: 'Connected calls out of all calls, against the 75% at which the connect rate turns green.',
+  byHour: 'How many calls each website made at each hour of the day. Investor DMS opens the whole period, not one hour.',
+  outcomes: 'How calls ended, in both websites, or how many calls each website made. Click a part to open those calls.',
+  msgTypes: 'Messages sent (WhatsApp and email) in both websites. Click to open them in the website that sent them.',
+  templates: 'Each WhatsApp template\'s share of all templates sent in this period, most used first.',
+  delivery: 'What happened to the messages sent: read, delivered, sent, or failed.',
+  effort: 'Calls a day (both websites) against a result, for each IS or each team. The dashed lines are the company medians; they split people into Star, Hard worker, Smart worker and Needs attention.',
+  compare: 'The teams or people ticked in the picker, day by day and against the Money Honey average (both websites).',
+  people: 'Each person\'s work in this period in both websites, by team. Click a team to open it, a name to see their dashboard, a number to open its records.',
+  sources: 'For each lead source, in this period: of the records called, how many connected, were taken from the Pool (of those called in the Pool) and converted.',
+}

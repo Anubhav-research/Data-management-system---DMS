@@ -12,6 +12,7 @@ import { workableMembers, isInvestorMember } from '@/services/family'
 import { clientName, primaryMobile, cityState, restoreFromJunk, restoreFamiliesFromJunk, familyRestoreTargets, adminConvert, junkLogCsv } from '@/services/lifecycle'
 import { fmtDateTime, fmtMobile, DAY } from '@/utils/format'
 import PageHeader from '@/components/PageHeader.vue'
+import SilentFilterBar from '@/components/SilentFilterBar.vue'
 import ListToolbar from '@/components/ListToolbar.vue'
 import DataTable from '@/components/DataTable.vue'
 import UserChip from '@/components/UserChip.vue'
@@ -31,7 +32,7 @@ const source = () => db.clients.filter((c) => c.stage === 'Junk').map((c) => {
     source: c.source || '-', movedFrom: c.movedFrom || '-', movedOn: c.movedOn, movedBy: c.movedBy, totalCalls: c.totalCalls || 0,
   }
 })
-const { search, quickValues, advanced, sort, rows, loading, refresh } = useList(source, {
+const { search, quickValues, advanced, sort, rows, loading, refresh, silentIds, clearSilent } = useList(source, {
   searchKeys: ['name', 'mobile'],
   defaultSort: { key: 'movedOn', dir: 'desc' },
   quickMatch: { movedOn: (r, v) => r.movedOn && Date.now() - r.movedOn <= Number(v) * DAY },
@@ -94,6 +95,7 @@ const otherMenu = computed(() => [
         <Button label="Junk log (CSV)" icon-left="lucide-download" :title="`${db.junkLog.length} log entries. GEN-010: kept at least 2 years, never removed from the back end.`" @click="downloadLog" />
       </template>
     </PageHeader>
+    <SilentFilterBar v-if="silentIds" :count="rows.length" @clear="clearSilent" />
     <ListToolbar v-model:search="search" v-model:quick-values="quickValues" v-model:advanced="advanced" v-model:sort="sort"
       placeholder="Name / Mobile No." :quick="quick" :filter-fields="columns.map((c) => ({ key: c.key, label: c.label }))"
       :sort-fields="columns.map((c) => ({ key: c.key, label: c.label }))" @refresh="refresh" />

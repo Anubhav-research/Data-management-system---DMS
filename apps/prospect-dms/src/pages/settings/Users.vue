@@ -6,12 +6,15 @@
 import { ref, computed } from 'vue'
 import { Dialog, Button, FormControl, Switch, TabButtons, TextInput, Badge, toast } from 'frappe-ui'
 import { useDb } from '@/stores/db'
+import { settingsFilter } from '@/composables/settings'
 import { ROLES, USER_SWITCHES } from '@/data/masters'
 import SettingsShell from '@/components/settings/SettingsShell.vue'
 
 const db = useDb()
 const q = ref('')
-const users = computed(() => db.users.filter((u) => !q.value || `${u.name} ${u.mhf_id} ${u.role}`.toLowerCase().includes(q.value.toLowerCase())))
+// opened from the Dashboard: only the people behind the number clicked, until the filter is removed
+const clearDrill = () => { settingsFilter.value = null }
+const users = computed(() => db.users.filter((u) => (!settingsFilter.value || settingsFilter.value.ids.includes(u.id)) && (!q.value || `${u.name} ${u.mhf_id} ${u.role}`.toLowerCase().includes(q.value.toLowerCase()))))
 const uname = (id) => db.userById(id)?.name || '-'
 
 const open = ref(false)
@@ -41,6 +44,11 @@ function save() {
 </script>
 <template>
   <SettingsShell title="User Access" description="Set each person's reporting line and decide what they may do in DMS.">
+    <div v-if="settingsFilter" class="mb-2 flex items-center gap-2 rounded-4 bg-surface-blue-1 px-3 py-1.5 text-sm text-ink-blue-7" data-testid="silent-filter">
+      <span class="lucide-layout-dashboard size-3.5 shrink-0" />
+      <span class="min-w-0 truncate">From Dashboard: <b class="font-medium">{{ settingsFilter.from }}</b> · {{ users.length }} record{{ users.length === 1 ? '' : 's' }}</span>
+      <button class="ml-auto shrink-0 font-medium underline" @click="clearDrill">Remove filter</button>
+    </div>
     <section class="rounded-7 border bg-surface-base">
       <div class="flex items-center justify-between border-b px-5 py-3">
         <div class="w-72"><TextInput v-model="q" placeholder="Search users..."><template #prefix><span class="lucide-search size-4 text-ink-gray-5" /></template></TextInput></div>

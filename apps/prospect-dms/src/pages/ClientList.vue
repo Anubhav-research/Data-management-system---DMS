@@ -9,9 +9,10 @@
 // Product owner, 23 Nov 2026: a family whose last member has been accepted by Investor DMS leaves this list (the
 // advisor who converted gets a congratulation notification). Quick filters (4): Call Status, Last Called and Upcoming
 // Event (date filters: 30/60/90-day presets or a custom date), Assigned to (TL+) or Converted On.
+import { earliestPer } from '@mh/core-ui/byId.js'
 import { computed, ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Button, Dropdown, Badge, dialog, toast } from 'frappe-ui'
+import { Button, dialog, toast } from 'frappe-ui'
 import { useDb } from '@/stores/db'
 import { useList } from '@/composables/useList'
 import { PRODUCT_INTEREST, LANGUAGES } from '@/data/masters'
@@ -36,16 +37,17 @@ const short = Object.fromEntries(PRODUCT_INTEREST.map((p) => [p.key, p.short]))
 const title = { Prospect: 'Prospects', Lead: 'Leads', 'Investor Family': 'Investor Family' }[props.stage]
 const isFamily = props.stage === 'Investor Family'
 
-const upcomingEvent = (c) => db.events.filter((e) => e.clientId === c.id && !e.cancelled && e.start > now()).sort((a, b) => a.start - b.start)[0]?.start || null
+// each client's next event / scheduled deal, worked out once per list build (thousands of rows)
+const nextEvents = () => { const t = now(); return earliestPer(db.events, (e) => e.clientId, (e) => e.start, (e) => !e.cancelled && e.start > t) }
 /** Investor Family: the first member who is not an investor (the person the specialist still works with). */
 const contactOf = (c) => workableMembers(c)[0] || null
 const DAY = 86400000
 const sod = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime() }
 const daysAgo = (t) => (t ? Math.round((sod(Date.now()) - sod(t)) / DAY) : null) // calendar days
 const source = () => {
-  const ids = visibleUserIds()
+  const ids = visibleUserIds(); const next = nextEvents()
   // Investor Family: a complete family (last member accepted by Investor DMS) is no longer listed
-  return db.clients.filter((c) => c.stage === props.stage && (isAdmin() || ids.includes(c.assignedTo)) && !(isFamily && isFamilyComplete(c))).map((c) => {
+  return db.clients.filter((c) => c.stage === props.stage && (isAdmin() || ids.includes(c.assignedTo)) && !(isFamily && isFamilyComplete(c) && !String(route.query.ids || '').split(',').includes(c.id))).map((c) => {
     const ct = isFamily ? contactOf(c) : null
     return {
     lastCalledDays: daysAgo(c.lastCallAt),
@@ -55,7 +57,7 @@ const source = () => {
     contactCity: ct?.addresses?.[0]?.city || '', remaining: workableMembers(c).length, total: c.members.length,
     allNames: c.members.map(fullName).join(' '),
     product: (c.members[0].product || []).map((k) => short[k]).join(', '), productKeys: c.members[0].product || [],
-    callStatus: c.callStatus, lastCalled: c.lastCallAt, event: upcomingEvent(c), rem: remDays(c),
+    callStatus: c.callStatus, lastCalled: c.lastCallAt, event: next.get(c.id) || null, rem: remDays(c),
     assignedTo: c.assignedTo, assignedName: db.userById(c.assignedTo)?.name, city: isFamily ? ct?.addresses?.[0]?.city : c.members[0].addresses?.[0]?.city, cityState: cityState(c),
   }
   })
@@ -172,7 +174,7 @@ const bulkMenu = computed(() => (isFamily ? [{ label: 'Junk', icon: 'lucide-tras
       :empty-text="`No ${title.toLowerCase()} found`" @row-click="(r) => router.push(`/record/${r.id}`)">
       <template #cell-name="{ row }"><UserChip :name="row.name" /><span class="sr-only">{{ row.name }}</span><span v-if="row.primaryInvestor" class="ml-1.5 rounded-4 border border-outline-green-3 bg-surface-green-1 px-1 text-2xs font-semibold text-ink-green-7">INVESTOR</span></template>
       <template #cell-mobile="{ row }"><span class="tabular" :class="row.primaryInvestor && 'text-ink-gray-5'">{{ row.primaryInvestor ? MASK : fmtMobile(row.mobile) }}</span></template>
-      <template #cell-familyId="{ row }"><span class="tabular text-ink-gray-7">{{ row.familyId }}</span><span v-if="row.fully" class="ml-1.5 rounded-4 bg-surface-amber-1 px-1.5 text-2xs text-ink-amber-7">Waiting for Investor DMS</span></template>
+      <template #cell-familyId="{ row }"><span class="tabular text-ink-gray-7">{{ row.familyId }}</span></template>
       <template #cell-contact="{ row }">
         <span v-if="row.contact" class="flex min-w-0 items-center gap-1.5"><UserChip :name="row.contact" full /><span v-if="row.contactRel" class="shrink-0 text-sm text-ink-gray-5">· {{ row.contactRel }}</span></span>
         <span v-else class="text-sm text-ink-gray-5">All converted</span>

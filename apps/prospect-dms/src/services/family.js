@@ -49,8 +49,13 @@ export function normalize(v) {
 }
 
 /** Value -> record id, for every mobile and PAN held by an Investor Family / Unassigned Family member. */
+// The index is kept for the rest of the current run only (a loop over every record asks for it once per record);
+// the next user action or timer tick builds it again, so it never goes stale across changes.
+let dndCache = null
 export function dndIndex() {
+  if (dndCache) return dndCache
   const idx = new Map()
+  dndCache = idx; queueMicrotask(() => { dndCache = null })
   for (const c of db().clients) {
     if (!FAMILY_STAGES.includes(c.stage)) continue
     for (const m of c.members) {

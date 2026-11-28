@@ -8,6 +8,8 @@ const routes = [
   { path: '/login', name: 'Login', component: () => import('@/pages/Login.vue'), meta: { public: true, bare: true } },
   { path: '/', redirect: SITE.home }, // landing page: OPEN_QUESTIONS A7
   { path: '/dashboard', name: 'Dashboard', component: () => import('@/pages/Dashboard.vue') },
+  // design review page: every dashboard component in every state (Admin only, not in the sidebar; PROMPT_DASHBOARD_REDESIGN.md §2.4)
+  { path: '/dashboard-lab', name: 'DashboardLab', component: () => import('@mh/core-ui/components/dash/lab/DashboardLab.vue'), props: { accent: 'p' } },
   { path: '/pool', name: 'Pool', component: () => import('@/pages/Pool.vue') },
   { path: '/prospects', name: 'Prospects', component: () => import('@/pages/ClientList.vue'), props: { stage: 'Prospect' } },
   { path: '/leads', name: 'Leads', component: () => import('@/pages/ClientList.vue'), props: { stage: 'Lead' } },
@@ -17,6 +19,9 @@ const routes = [
   { path: '/junk', name: 'Junk', component: () => import('@/pages/Junk.vue') },
   { path: '/notes', name: 'Notes', component: () => import('@/pages/Notes.vue') },
   { path: '/tasks', name: 'Tasks', component: () => import('@/pages/Tasks.vue') },
+  // drill-down targets of the Dashboard (read-only lists, product owner 24 Nov 2026)
+  { path: '/approvals', name: 'Approvals', component: () => import('@/pages/Approvals.vue') },
+  { path: '/exceptions', name: 'Exceptions', component: () => import('@/pages/Exceptions.vue') },
   { path: '/events', name: 'Events', component: () => import('@/pages/Events.vue') },
   { path: '/calendar', name: 'Calendar', component: () => import('@/pages/Calendar.vue') },
   { path: '/call-logs', name: 'CallLogs', component: () => import('@/pages/CallLogs.vue') },
@@ -42,7 +47,7 @@ router.beforeEach((to, from) => {
     return { name: 'Invalid', params: { pathMatch: to.path.slice(1).split('/') }, replace: true }
   }
   if (to.name === 'Settings') {
-    openSettings(to.path.split('/')[2] || 'profile')
+    openSettings(to.path.split('/')[2] || 'profile', to.query)
     // stay where the user is; a direct link lands on the default page behind the modal
     return from.matched.length && !from.meta.public && from.name !== 'Invalid' ? false : { path: SITE.home, replace: true }
   }

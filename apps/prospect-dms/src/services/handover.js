@@ -103,6 +103,8 @@ export function buildPayload(c, verifiedRows, investorPrimaryKey, handoverId, co
   return {
     handoverId, idempotencyKey: handoverId, contractVersion, createdAt: istIso(), familyId: c.familyId,
     convertingAdvisorMhfId: owner?.mhf_id || null, convertingAdvisorName: owner?.name || null,
+    // contract 1.1.0: where the record came from (its import source, or Manual), for Admin's Sources view in Investor DMS
+    sourceName: c.source || 'Manual',
     actedByMhfId: me && me.id !== c.assignedTo ? me.mhf_id : null, convertedFromStage: c.stage,
     investorPrimary: ref(investorPrimaryKey), members,
   }

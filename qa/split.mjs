@@ -267,25 +267,24 @@ const overlap = await pp.evaluate((t) => window.__qa.s['./services/busy.js'].ove
 check(results, 'TS-18', blocks.some((b) => b.start === t0.getTime()) && blocks.every((b) => Object.keys(b).sort().join() === 'allDay,end,start,userMhfId') && overlap && cursorWeek > 0 && !(await pp.locator('text=QA secret').count()),
   `${blocks.length} block(s) for Anubhav, fields: ${Object.keys(blocks[0] || {}).join(', ')}; overlap warning: ${overlap}; shown on calendar: ${cursorWeek}`)
 
-// ---------------- TS-21 dashboards match the lists and the audit log ----------------
-async function listTotal(page, base, route) { await go(page, base, route, 1500); const t = await page.locator('footer').last().innerText(); const m = t.match(/of\s+([\d,]+)/); return m ? Number(m[1].replace(/,/g, '')) : (await page.locator('tbody tr').count()) }
-async function dashValue(page, id) { const t = await page.locator(`[data-testid=${id}] [data-value]`).innerText(); return Number(t.replace(/[^\d]/g, '')) }
+// ---------------- TS-21 dashboards match the lists, and the Investor DMS part of the Prospect DMS dashboard (F5) ----------------
+// Product owner 27 Nov 2026: Prospect DMS shows both websites; its Investor DMS numbers come through the bridge (F5,
+// numbers only) and must equal Investor DMS's own dashboard and lists.
+async function listTotal(page, base, route) { await go(page, base, route, 1500); const t = await page.locator('footer').last().innerText(); const m = t.match(/ofs+([d,]+)/); return m ? Number(m[1].replace(/,/g, '')) : (await page.locator('tbody tr').count()) }
+async function dashValue(page, sel) { const t = await page.locator(`${sel} [data-value]`).first().innerText(); return Number(t.replace(/[^d]/g, '')) }
 await pA.evaluate(() => window.__qa.reload()); await iA.evaluate(() => window.__qa.reload())
-await go(pA, P, '/dashboard', 2000)
-const d21 = { prospects: await dashValue(pA, 'dash-prospects'), leads: await dashValue(pA, 'dash-leads'), fam: await dashValue(pA, 'dash-investor-family'), delivered: await dashValue(pA, 'dash-h-delivered'), people: await dashValue(pA, 'dash-conv-people') }
+await go(pA, P, '/dashboard', 4000)
+// the combined dashboard: investors held come from Investor DMS; the Calls card adds both websites ("Prospect n · Investor n")
+const callsSub = await pA.locator('[data-testid=dash-kpi-calls]').innerText()
+const d21 = { investors: await dashValue(pA, '[data-testid=dash-held-investors]'), calls: Number((callsSub.match(/Investor ([\d,]+)/)?.[1] || '').replace(/,/g, '')) }
 await shot(pA, 'TS21_P_dashboard')
-const l21 = { prospects: await listTotal(pA, P, '/prospects'), leads: await listTotal(pA, P, '/leads'), fam: await listTotal(pA, P, '/investor-family') }
-await go(iA, I, '/dashboard', 2000)
-const di = { investors: await dashValue(iA, 'dash-investors'), unassigned: await dashValue(iA, 'dash-unassigned'), accepted: await dashValue(iA, 'dash-rec-accepted'), rejected: await dashValue(iA, 'dash-rec-rejected') }
+await go(iA, I, '/dashboard', 3000)
+const di = { calls: await dashValue(iA, '[data-testid=dash-kpi-calls]'), unassigned: await dashValue(iA, '[data-testid=dash-unassigned-all]') }
 await shot(iA, 'TS21_I_dashboard')
 const li = { investors: await listTotal(iA, I, '/investors'), unassigned: await listTotal(iA, I, '/unassigned') }
-const a21 = (await admin('GET', '/audit')).data.items
-const ps21 = await pState()
-const deliveredPeople = ps21.handovers.filter((h) => h.status !== 'Reverted').reduce((s, h) => s + h.memberCount, 0)
-const auditAcks = a21.filter((e) => e.flow === 'F1_ACK' && e.route === 'POST /handover/:id/ack' && e.caller === 'Investor DMS' && /^(Accepted|Rejected)/.test(e.result) && e.actor !== 'QA script')
-const ok21 = d21.prospects === l21.prospects && d21.leads === l21.leads && d21.fam === l21.fam && d21.people === deliveredPeople && d21.delivered === ps21.handovers.filter((h) => h.status === 'Delivered').length
-  && di.investors === li.investors && di.unassigned === li.unassigned && di.accepted + di.rejected === auditAcks.length
-check(results, 'TS-21', ok21, `Prospect DMS dashboard ${JSON.stringify(d21)} vs lists ${JSON.stringify(l21)} (people handed over in outbox ${deliveredPeople}); Investor DMS dashboard ${JSON.stringify(di)} vs lists ${JSON.stringify(li)}, acks in audit log ${auditAcks.length}`)
+const f5 = (await admin('GET', '/audit?flow=F5')).data.items.filter((e) => e.caller === 'Prospect DMS' && /^answered/.test(e.result) && e.hash)
+const ok21 = d21.investors === li.investors && d21.calls === di.calls && di.unassigned === li.unassigned && f5.length > 0
+check(results, 'TS-21', ok21, `Prospect DMS dashboard, Investor DMS share ${JSON.stringify(d21)}; Investor DMS dashboard ${JSON.stringify(di)} vs lists ${JSON.stringify(li)}; F5 answers in the audit log ${f5.length}`)
 
 // ---------------- TS-22 two admins on one website ----------------
 const pA2 = await openAs(browser, P, 'MHF500001', problems, 'P-Admin-2')
